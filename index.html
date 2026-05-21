@@ -5,7 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>강의일정 캘린더 변환기</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+// CDN 이중화: jsdelivr 실패 시 cdnjs 자동 전환
+(function(){
+  var s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+  s.onerror=function(){
+    var s2=document.createElement('script');
+    s2.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s2.onerror=function(){
+      document.getElementById('libStatus').className='lib-status lib-fail';
+      document.getElementById('libStatus').textContent='❌ 라이브러리 로드 실패 — 인터넷 연결 확인 후 새로고침';
+    };
+    document.head.appendChild(s2);
+  };
+  document.head.appendChild(s);
+})();
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
 :root{
@@ -83,6 +99,7 @@ input[type=text]:focus{border-color:var(--accent);}
   <div class="badge">KISA SEOUL · 강의운영</div>
   <h1>강의일정 <span>캘린더 변환기</span></h1>
   <p class="sub">xlsx → 아이폰 캘린더 직접 추가</p>
+  <p style="font-size:11px;color:var(--muted);margin-top:4px;font-family:'JetBrains Mono',monospace;">v1.3 · 2026.05</p>
 </div>
 
 <div class="lib-status" id="libStatus">⏳ 로딩 중...</div>
@@ -294,10 +311,13 @@ function convert(){
         var dateStr=(d.getMonth()+1)+'/'+d.getDate()+'('+WEEK_KO[d.getDay()]+')';
         listEl.innerHTML+='<div class="event-item"><div class="ev-row1"><span class="date-chip">'+dateStr+'</span><span class="time-chip">'+pad(t.sh)+':'+pad(t.sm)+'~'+pad(t.eh)+':'+pad(t.em)+'</span></div><div class="ev-title">'+ev.subject+'</div>'+(ev.course?'<div class="ev-course">'+ev.course+'</div>':'')+'</div>';
       });
+      // 이전 Blob URL 해제 (메모리 누수 방지)
+      var prevBtn=document.getElementById('calAddBtn');
+      if(prevBtn._blobUrl){URL.revokeObjectURL(prevBtn._blobUrl);}
       var blob=new Blob([icsContent],{type:'text/calendar;charset=utf-8'});
       var url=URL.createObjectURL(blob);
-      var btn=document.getElementById('calAddBtn');
-      btn.href=url;btn.download=icsFilename;btn.onclick=null;
+      prevBtn._blobUrl=url;
+      prevBtn.href=url;prevBtn.download=icsFilename;prevBtn.onclick=null;
       document.getElementById('resultWrap').style.display='block';
       setTimeout(function(){document.getElementById('resultWrap').scrollIntoView({behavior:'smooth'});},150);
     }catch(err){log('❌ 오류: '+err.message,'err');console.error(err);}
