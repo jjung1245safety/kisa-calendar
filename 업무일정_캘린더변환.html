@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>업무일정 캘린더 변환기</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#22263a;
+  --border:#2e3350;--accent:#4f7cff;--accent2:#7c5cff;
+  --success:#3ecf8e;--warn:#f5a623;--text:#e8eaf0;--muted:#6b7094;--red:#ff5c7c;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{min-height:100%;background:var(--bg);}
+body{color:var(--text);font-family:'Noto Sans KR',sans-serif;display:flex;flex-direction:column;align-items:center;padding:28px 16px 80px;padding-bottom:max(80px,env(safe-area-inset-bottom));}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:40px 40px;opacity:.2;pointer-events:none;z-index:0;}
+*{position:relative;z-index:1;}
+.header{text-align:center;margin-bottom:20px;}
+.badge{display:inline-block;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:11px;font-weight:700;letter-spacing:2px;padding:4px 12px;border-radius:20px;margin-bottom:10px;font-family:'JetBrains Mono',monospace;}
+h1{font-size:22px;font-weight:700;}
+h1 span{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.sub{color:var(--muted);font-size:13px;margin-top:6px;line-height:1.5;}
+.sub small{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:500px;margin-bottom:12px;overflow:hidden;}
+.card-header{padding:13px 16px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;letter-spacing:1.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:8px;}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+.card-body{padding:16px;}
+label{display:block;font-size:11px;font-weight:500;color:var(--muted);letter-spacing:1px;margin-bottom:7px;font-family:'JetBrains Mono',monospace;}
+textarea{width:100%;min-height:120px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--text);font-family:monospace;font-size:13px;outline:none;transition:border-color .2s;-webkit-appearance:none;resize:vertical;word-break:break-all;}
+textarea:focus{border-color:var(--accent);}
+.hint{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.7;}
+.hint strong{color:var(--accent);}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:16px;border-radius:14px;border:none;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-size:16px;font-weight:700;transition:all .15s;-webkit-appearance:none;}
+.btn:active{transform:scale(.98);}.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 20px rgba(79,124,255,.35);}
+.btn-paste{background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:11px;margin-top:10px;}
+.btn-paste:active{border-color:var(--accent);}
+.log{background:var(--surface2);border-radius:10px;padding:12px 14px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);display:none;line-height:2;margin-top:10px;border:1px solid var(--border);}
+.log.visible{display:block;}
+.log .ok{color:var(--success);}.log .err{color:var(--red);}.log .info{color:var(--accent);}
+.result-wrap{width:100%;max-width:500px;display:none;}
+.result-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
+.result-card-header{padding:14px 16px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;letter-spacing:1.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:8px;}
+.result-body{padding:16px;}
+.stat-row{display:flex;gap:8px;margin-bottom:18px;}
+.stat{flex:1;background:var(--surface2);border-radius:10px;padding:12px 8px;text-align:center;border:1px solid var(--border);}
+.stat-num{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--accent);}
+.stat-label{font-size:11px;color:var(--muted);margin-top:2px;}
+.cal-add-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:18px;border-radius:14px;background:linear-gradient(135deg,var(--success),#22b873);color:#fff;font-size:17px;font-weight:700;text-decoration:none;box-shadow:0 4px 24px rgba(62,207,142,.35);letter-spacing:-.2px;font-family:'Noto Sans KR',sans-serif;border:none;cursor:pointer;margin-bottom:8px;}
+.cal-add-btn:active{transform:scale(.97);}
+.cal-add-hint{font-size:12px;color:var(--muted);text-align:center;line-height:1.7;margin-bottom:16px;}
+.cal-add-hint strong{color:var(--success);}
+.ios-guide{background:rgba(62,207,142,.07);border:1px solid rgba(62,207,142,.2);border-radius:12px;padding:14px 16px;margin-bottom:16px;}
+.ios-guide-title{font-size:13px;font-weight:700;color:var(--success);margin-bottom:8px;}
+.ios-steps{list-style:none;display:flex;flex-direction:column;gap:6px;}
+.ios-steps li{font-size:13px;color:var(--muted);display:flex;gap:8px;line-height:1.5;}
+.num{min-width:20px;height:20px;background:rgba(62,207,142,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--success);flex-shrink:0;margin-top:1px;}
+.ios-steps strong{color:var(--text);}
+.sec-label{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:8px;}
+.event-list{display:flex;flex-direction:column;gap:7px;}
+.event-item{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+.ev-row1{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;}
+.type-chip{border-radius:6px;padding:3px 9px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;white-space:nowrap;}
+.date-chip{background:rgba(79,124,255,.15);color:var(--accent);border-radius:6px;padding:3px 9px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;white-space:nowrap;}
+.time-chip{background:rgba(124,92,255,.12);color:var(--accent2);border-radius:6px;padding:3px 9px;font-family:'JetBrains Mono',monospace;font-size:11px;white-space:nowrap;}
+.ev-title{font-size:14px;font-weight:500;}
+.ev-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="badge">KISA SEOUL · 업무일정</div>
+  <h1>업무일정 <span>캘린더 변환기</span></h1>
+  <p class="sub">PC 업무일정표 → 아이폰 캘린더<br><small>v1.0 · 2026.05</small></p>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="dot"></span>STEP 01 · 코드 붙여넣기</div>
+  <div class="card-body">
+    <label>업무일정표에서 생성한 캘린더 코드</label>
+    <textarea id="codeInput" placeholder="PC 업무일정표 → '📱 캘린더 코드' 버튼 → 복사한 코드를 여기에 붙여넣기"></textarea>
+    <button class="btn btn-paste" onclick="pasteCode()">📋 클립보드에서 붙여넣기</button>
+    <div class="hint">💡 PC 업무일정표에서 원하는 달로 이동 후 <strong>📱 캘린더 코드</strong> 버튼을 누르면 코드가 생성됩니다. 카카오톡 '나에게 보내기'로 코드를 보내 여기서 붙여넣어도 됩니다.</div>
+  </div>
+</div>
+
+<div style="width:100%;max-width:500px;margin-bottom:12px;">
+  <button class="btn btn-primary" id="btnConvert" onclick="convert()">⚡ 변환하기</button>
+  <div class="log" id="log"></div>
+</div>
+
+<div class="result-wrap" id="resultWrap">
+  <div class="result-card">
+    <div class="result-card-header"><span class="dot"></span>STEP 02 · 캘린더에 추가</div>
+    <div class="result-body">
+      <div class="stat-row" id="statRow"></div>
+      <a id="calAddBtn" class="cal-add-btn" href="#">📅 캘린더에 추가</a>
+      <div class="cal-add-hint">탭 → 다운로드 완료 후 파일 열기 → "모든 이벤트 추가"</div>
+      <div class="ios-guide">
+        <div class="ios-guide-title">📱 등록 방법</div>
+        <ul class="ios-steps">
+          <li><span class="num">1</span><span>위 <strong>"📅 캘린더에 추가"</strong> 탭</span></li>
+          <li><span class="num">2</span><span>다운로드된 파일 탭 → <strong>"캘린더에서 열기"</strong></span></li>
+          <li><span class="num">3</span><span><strong>"모든 이벤트 추가"</strong> 탭 → 완료 🎉</span></li>
+        </ul>
+      </div>
+      <div style="border-top:1px solid var(--border);margin-bottom:14px;"></div>
+      <div class="sec-label">📋 변환된 업무 일정</div>
+      <div class="event-list" id="eventList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 업무일정표와 동일한 타입 라벨/색상
+var TL={main:'주담당',assist:'보조',inspect:'점검',consult:'컨설팅',system:'체계구축',lecture:'강의',training:'교육',night:'야간',leave:'연차',leave_am:'오전반차',leave_pm:'오후반차',etc:'기타'};
+var TC={ // 타입별 색상 (칩 표시용)
+  main:'#4f7cff',assist:'#7c5cff',inspect:'#3ecf8e',consult:'#f5a623',
+  system:'#06b6d4',lecture:'#ec4899',training:'#8b5cf6',night:'#64748b',
+  leave:'#ef4444',leave_am:'#f97316',leave_pm:'#f59e0b',etc:'#6b7094'
+};
+var WEEK_KO=['일','월','화','수','목','금','토'];
+var icsContent=null, icsFilename=null;
+
+function log(msg,cls){var el=document.getElementById('log');el.classList.add('visible');el.innerHTML+='<div class="'+(cls||'')+'">'+msg+'</div>';}
+function clearLog(){var el=document.getElementById('log');el.innerHTML='';el.classList.remove('visible');}
+
+function pasteCode(){
+  if(navigator.clipboard && navigator.clipboard.readText){
+    navigator.clipboard.readText().then(function(t){
+      document.getElementById('codeInput').value=t.trim();
+      log('📋 클립보드에서 붙여넣었습니다','info');
+    }).catch(function(){
+      log('⚠️ 클립보드 접근 불가 — 길게 눌러 직접 붙여넣기 하세요','err');
+    });
+  } else {
+    log('⚠️ 이 브라우저는 자동 붙여넣기 미지원 — 직접 붙여넣기 하세요','err');
+  }
+}
+
+function pad(n){return String(n).padStart(2,'0');}
+function dateOnly(d){return d.replace(/-/g,'');}
+function dateTime(d,t){var hm=t.split(':');return dateOnly(d)+'T'+pad(hm[0])+pad(hm[1]||'0')+'00';}
+function nextDay(d){var dt=new Date(d+'T00:00:00');dt.setDate(dt.getDate()+1);return dt.getFullYear()+pad(dt.getMonth()+1)+pad(dt.getDate());}
+function uuid4(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});}
+function esc(s){return String(s).replace(/([,;\\])/g,'\\$1');}
+
+function convert(){
+  clearLog();
+  document.getElementById('resultWrap').style.display='none';
+  var code=document.getElementById('codeInput').value.trim();
+  if(!code){log('❌ 코드를 붙여넣어 주세요','err');return;}
+
+  // base64(url-safe) → JSON
+  var payload;
+  try{
+    var b64=code.replace(/-/g,'+').replace(/_/g,'/');
+    while(b64.length%4)b64+='=';
+    var json=decodeURIComponent(escape(atob(b64)));
+    payload=JSON.parse(json);
+  }catch(e){
+    log('❌ 코드 형식이 올바르지 않습니다. 다시 복사해 붙여넣어 주세요.','err');
+    return;
+  }
+
+  if(!payload||!payload.ev||!Array.isArray(payload.ev)||payload.ev.length===0){
+    log('❌ 일정 데이터가 없습니다.','err');return;
+  }
+
+  var events=payload.ev.map(function(e){
+    return {type:e.t,name:e.n||'',date:e.d,dateEnd:e.de||'',time:e.tm||'',timeEnd:e.te||'',place:e.p||'',note:e.no||''};
+  });
+  events.sort(function(a,b){return (a.date+(a.time||'')).localeCompare(b.date+(b.time||''));});
+  log('<span class="ok">✅ '+(payload.ym||'')+' '+events.length+'건 일정 인식!</span>');
+
+  // ICS 생성
+  var stamp=new Date().toISOString().replace(/[-:.]/g,'').slice(0,15)+'Z';
+  var lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//KISA Seoul//Work Schedule//KO','CALSCALE:GREGORIAN','METHOD:PUBLISH','X-WR-CALNAME:안전관리 업무일정','X-WR-TIMEZONE:Asia/Seoul','BEGIN:VTIMEZONE','TZID:Asia/Seoul','BEGIN:STANDARD','DTSTART:19700101T000000','TZOFFSETFROM:+0900','TZOFFSETTO:+0900','TZNAME:KST','END:STANDARD','END:VTIMEZONE'];
+
+  events.forEach(function(ev){
+    var label=TL[ev.type]||ev.type;
+    var summary='['+label+'] '+ev.name;
+    lines.push('BEGIN:VEVENT','UID:'+uuid4(),'DTSTAMP:'+stamp);
+    if(ev.time){
+      var sameDay=!(ev.dateEnd&&ev.dateEnd>ev.date);
+      var endT=ev.timeEnd, endD=sameDay?ev.date:ev.dateEnd;
+      if(!endT){
+        if(sameDay){var hm=ev.time.split(':');var h=parseInt(hm[0])+1;endT=pad(h>23?23:h)+':'+pad(hm[1]||'0');}
+        else endT=ev.time;
+      }
+      lines.push('DTSTART;TZID=Asia/Seoul:'+dateTime(ev.date,ev.time),'DTEND;TZID=Asia/Seoul:'+dateTime(endD,endT));
+    } else {
+      var endDate=(ev.dateEnd&&ev.dateEnd>=ev.date)?nextDay(ev.dateEnd):nextDay(ev.date);
+      lines.push('DTSTART;VALUE=DATE:'+dateOnly(ev.date),'DTEND;VALUE=DATE:'+endDate);
+    }
+    lines.push('SUMMARY:'+esc(summary));
+    var dp=[];
+    if(ev.place)dp.push('장소: '+ev.place);
+    if(ev.note)dp.push('메모: '+ev.note);
+    if(dp.length)lines.push('DESCRIPTION:'+esc(dp.join('\n')));
+    if(ev.place)lines.push('LOCATION:'+esc(ev.place));
+    lines.push('END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  icsContent=lines.join('\r\n');
+  icsFilename='안전관리_업무일정_'+(payload.ym||'').replace('-','년')+'월.ics';
+
+  // 통계
+  var withTime=events.filter(function(e){return e.time;}).length;
+  var allDay=events.length-withTime;
+  var uniqDays=new Set(events.map(function(e){return e.date;})).size;
+  document.getElementById('statRow').innerHTML=
+    '<div class="stat"><div class="stat-num">'+events.length+'</div><div class="stat-label">전체 일정</div></div>'+
+    '<div class="stat"><div class="stat-num">'+withTime+'</div><div class="stat-label">시간 일정</div></div>'+
+    '<div class="stat"><div class="stat-num">'+uniqDays+'</div><div class="stat-label">일정 날짜수</div></div>';
+
+  // 목록
+  var listEl=document.getElementById('eventList');listEl.innerHTML='';
+  events.forEach(function(ev){
+    var d=new Date(ev.date+'T00:00:00');
+    var dateStr=(d.getMonth()+1)+'/'+d.getDate()+'('+WEEK_KO[d.getDay()]+')';
+    var label=TL[ev.type]||ev.type;
+    var color=TC[ev.type]||'#6b7094';
+    var timeStr=ev.time?(ev.time+(ev.timeEnd?'~'+ev.timeEnd:'')):'종일';
+    listEl.innerHTML+='<div class="event-item"><div class="ev-row1">'+
+      '<span class="type-chip" style="background:'+color+'22;color:'+color+';">'+label+'</span>'+
+      '<span class="date-chip">'+dateStr+(ev.dateEnd&&ev.dateEnd>ev.date?'~':'')+'</span>'+
+      '<span class="time-chip">'+timeStr+'</span>'+
+      '</div><div class="ev-title">'+ev.name+'</div>'+
+      ((ev.place||ev.note)?'<div class="ev-sub">'+[ev.place,ev.note].filter(Boolean).join(' · ')+'</div>':'')+
+      '</div>';
+  });
+
+  // 캘린더 추가 버튼
+  var btn=document.getElementById('calAddBtn');
+  if(btn._blobUrl)URL.revokeObjectURL(btn._blobUrl);
+  var blob=new Blob([icsContent],{type:'text/calendar;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  btn._blobUrl=url;btn.href=url;btn.download=icsFilename;btn.onclick=null;
+
+  document.getElementById('resultWrap').style.display='block';
+  setTimeout(function(){document.getElementById('resultWrap').scrollIntoView({behavior:'smooth'});},150);
+}
+</script>
+</body>
+</html>
