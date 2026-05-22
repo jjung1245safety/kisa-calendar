@@ -181,7 +181,7 @@ function convert(){
 
   events.forEach(function(ev){
     var label=TL[ev.type]||ev.type;
-    var summary='['+label+'] '+ev.name;
+    var summary=ev.name||('['+label+']');
     lines.push('BEGIN:VEVENT','UID:'+uuid4(),'DTSTAMP:'+stamp);
     if(ev.time){
       var sameDay=!(ev.dateEnd&&ev.dateEnd>ev.date);
@@ -197,6 +197,7 @@ function convert(){
     }
     lines.push('SUMMARY:'+esc(summary));
     var dp=[];
+    dp.push('구분: '+label);
     if(ev.place)dp.push('장소: '+ev.place);
     if(ev.note)dp.push('메모: '+ev.note);
     if(dp.length)lines.push('DESCRIPTION:'+esc(dp.join('\n')));
