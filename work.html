@@ -144,7 +144,12 @@ function pad(n){return String(n).padStart(2,'0');}
 function dateOnly(d){return d.replace(/-/g,'');}
 function dateTime(d,t){var hm=t.split(':');return dateOnly(d)+'T'+pad(hm[0])+pad(hm[1]||'0')+'00';}
 function nextDay(d){var dt=new Date(d+'T00:00:00');dt.setDate(dt.getDate()+1);return dt.getFullYear()+pad(dt.getMonth()+1)+pad(dt.getDate());}
-function uuid4(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});}
+function makeUID(ev){
+  var key=[ev.type,ev.date,ev.dateEnd||'',ev.time||'',ev.timeEnd||'',ev.name||''].join('|');
+  var h=5381; for(var i=0;i<key.length;i++){h=((h<<5)+h+key.charCodeAt(i))>>>0;}
+  var h2=7919; for(var j=key.length-1;j>=0;j--){h2=((h2<<5)+h2+key.charCodeAt(j))>>>0;}
+  return 'kisa-'+h.toString(16)+h2.toString(16)+'@kisa.work';
+}
 function esc(s){return String(s).replace(/([,;\\])/g,'\\$1');}
 
 function convert(){
@@ -182,7 +187,7 @@ function convert(){
   events.forEach(function(ev){
     var label=TL[ev.type]||ev.type;
     var summary=ev.name||('['+label+']');
-    lines.push('BEGIN:VEVENT','UID:'+uuid4(),'DTSTAMP:'+stamp);
+    lines.push('BEGIN:VEVENT','UID:'+makeUID(ev),'DTSTAMP:'+stamp);
     if(ev.time){
       var sameDay=!(ev.dateEnd&&ev.dateEnd>ev.date);
       var endT=ev.timeEnd, endD=sameDay?ev.date:ev.dateEnd;
