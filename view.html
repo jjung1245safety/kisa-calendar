@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-title" content="업무일정">
+<meta name="theme-color" content="#f5f6fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
+<title>업무일정 보기</title>
+<style>
+:root{
+  --bg:#f5f6fa; --surface:#ffffff; --surface2:#eef0f5; --border:#e2e5ec;
+  --text:#16181d; --text2:#4a4f5c; --text3:#8a8f9c;
+  --accent:#3b6ff5; --sun:#dc2626; --sat:#2563eb; --today:#3b6ff5;
+  --leave-bg:#eceef2; --sel:#e8efff; --warn-bg:#fff4e5; --warn:#b45309;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111318; --surface:#1a1d24; --surface2:#232733; --border:#2c313d;
+    --text:#eceef3; --text2:#b4b9c6; --text3:#7d8392;
+    --accent:#6b93ff; --sun:#f87171; --sat:#60a5fa; --today:#6b93ff;
+    --leave-bg:#262a33; --sel:#1f2a44; --warn-bg:#3a2a12; --warn:#fbbf24;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111318; --surface:#1a1d24; --surface2:#232733; --border:#2c313d;
+  --text:#eceef3; --text2:#b4b9c6; --text3:#7d8392;
+  --accent:#6b93ff; --sun:#f87171; --sat:#60a5fa; --today:#6b93ff;
+  --leave-bg:#262a33; --sel:#1f2a44; --warn-bg:#3a2a12; --warn:#fbbf24;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{background:var(--bg);color:var(--text);}
+body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;
+  font-size:15px;line-height:1.45;padding-bottom:calc(24px + env(safe-area-inset-bottom));overflow-x:hidden;}
+button{font-family:inherit;color:inherit;}
+.wrap{max-width:560px;margin:0 auto;padding:0 16px;}
+
+/* 상단 */
+header{position:sticky;top:0;z-index:10;background:var(--bg);padding-top:env(safe-area-inset-top);}
+.bar{display:flex;align-items:center;gap:6px;padding:10px 0 6px;}
+.ym{font-size:22px;font-weight:800;letter-spacing:-.3px;flex:1;text-align:center;}
+.ib{border:none;background:var(--surface2);border-radius:10px;min-width:40px;height:36px;font-size:17px;font-weight:600;cursor:pointer;}
+.tb{border:none;background:var(--surface2);border-radius:10px;height:36px;padding:0 12px;font-size:14px;font-weight:600;cursor:pointer;}
+.status{font-size:12px;color:var(--text3);text-align:center;padding-bottom:8px;min-height:18px;}
+.status.warn{color:var(--warn);}
+.search{display:flex;gap:6px;padding-bottom:10px;}
+.search input{flex:1;min-width:0;height:38px;border:1px solid var(--border);background:var(--surface);color:var(--text);
+  border-radius:10px;padding:0 12px;font-size:16px;}
+.search .tb{flex-shrink:0;}
+
+/* 달력 */
+.cal{background:var(--surface);border-radius:14px;padding:6px 4px 8px;border:1px solid var(--border);}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);}
+.wk div{text-align:center;font-size:12px;font-weight:600;color:var(--text3);padding:4px 0;}
+.wk div:first-child{color:var(--sun);} .wk div:last-child{color:var(--sat);}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);row-gap:2px;}
+.cell{min-height:58px;border-radius:10px;padding:4px 2px 3px;text-align:center;cursor:pointer;position:relative;overflow:hidden;}
+.cell.empty{cursor:default;}
+.cell .d{font-size:15px;font-weight:600;display:inline-block;min-width:26px;height:26px;line-height:26px;border-radius:13px;}
+.cell.sat .d{color:var(--sat);} .cell.sun .d,.cell.hol .d{color:var(--sun);}
+.cell.today .d{background:var(--today);color:#fff;}
+.cell.sel{background:var(--sel);}
+.cell.leave{background:var(--leave-bg);}
+.cell .hn{font-size:9px;color:var(--sun);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;}
+.cell .lv{font-size:9.5px;color:var(--text2);font-weight:700;line-height:1.2;}
+.dots{display:flex;flex-wrap:wrap;justify-content:center;gap:3px;margin-top:3px;padding:0 2px;}
+.dot{width:6px;height:6px;border-radius:3px;}
+.more{font-size:9px;color:var(--text3);line-height:6px;}
+.cnt{font-size:10px;color:var(--text3);margin-top:1px;}
+
+/* 일정 목록 */
+.sec{margin-top:14px;}
+.sech{font-size:14px;font-weight:700;color:var(--text2);padding:4px 2px 8px;display:flex;justify-content:space-between;align-items:baseline;}
+.sech small{font-weight:500;color:var(--text3);}
+.day{margin-bottom:12px;}
+.dayh{font-size:13px;font-weight:700;color:var(--text2);padding:2px 2px 6px;}
+.dayh.today{color:var(--today);}
+.dayh .h{color:var(--sun);font-weight:600;margin-left:4px;}
+.ev{display:flex;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:6px;}
+.ev .bar2{width:4px;border-radius:2px;flex-shrink:0;}
+.ev .b{flex:1;min-width:0;}
+.ev .t1{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--text3);flex-wrap:wrap;}
+.chip{font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px;color:#fff;}
+.ev .nm{font-size:15.5px;font-weight:700;margin-top:3px;word-break:keep-all;overflow-wrap:anywhere;}
+.ev .mt{font-size:13px;color:var(--text2);margin-top:2px;overflow-wrap:anywhere;}
+.ev.past{opacity:.55;}
+.none{color:var(--text3);font-size:14px;text-align:center;padding:18px 0;}
+.tabs{display:flex;background:var(--surface2);border-radius:10px;padding:3px;margin:12px 0 0;}
+.tabs button{flex:1;border:none;background:none;height:32px;border-radius:8px;font-size:14px;font-weight:600;color:var(--text2);cursor:pointer;}
+.tabs button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08);}
+mark{background:#fde68a;color:#111;border-radius:3px;padding:0 1px;}
+
+/* 연결 화면 */
+.setup{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-top:24px;}
+.setup h2{font-size:18px;margin-bottom:8px;}
+.setup ol{padding-left:20px;font-size:14px;color:var(--text2);line-height:1.8;}
+.setup textarea{width:100%;height:90px;margin-top:12px;border:1px solid var(--border);border-radius:10px;padding:10px;
+  font-size:13px;font-family:ui-monospace,Menlo,monospace;background:var(--surface2);color:var(--text);}
+.setup .tb{margin-top:10px;width:100%;background:var(--accent);color:#fff;}
+.notice{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:13px;margin-top:10px;}
+footer{margin-top:22px;text-align:center;font-size:12px;color:var(--text3);line-height:1.8;}
+footer button{border:none;background:none;color:var(--text3);text-decoration:underline;font-size:12px;cursor:pointer;}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="bar">
+      <button class="ib" id="prevBtn" aria-label="이전 달">‹</button>
+      <div class="ym" id="ym">업무일정</div>
+      <button class="ib" id="nextBtn" aria-label="다음 달">›</button>
+      <button class="tb" id="todayBtn">오늘</button>
+      <button class="ib" id="refBtn" aria-label="새로고침">⟳</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="search" id="searchBox">
+      <input id="q" type="search" placeholder="사업장 검색 (전체 기간)" autocomplete="off" enterkeyhint="search">
+      <button class="tb" id="qClear" style="display:none;">취소</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="setup" style="display:none;"></div>
+  <div id="app" style="display:none;">
+    <div id="calWrap">
+      <div class="cal">
+        <div class="wk"><div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div></div>
+        <div class="grid" id="grid"></div>
+      </div>
+      <div class="tabs" id="tabs">
+        <button data-v="day" class="on">선택한 날</button>
+        <button data-v="month">이번 달 전체</button>
+      </div>
+    </div>
+    <div class="sec" id="list"></div>
+  </div>
+  <footer id="foot" style="display:none;">
+    보기 전용 · 수정은 PC 업무일정표에서<br>
+    <button id="logoutBtn">이 폰의 연결 해제</button>
+  </footer>
+</main>
+
+<script>
+(function(){
+'use strict';
+const CFG_KEY = 'kisa_view_cfg';
+const CACHE_KEY = 'kisa_view_cache';
+const POLL_MS = 120000;
+const WD = ['일','월','화','수','목','금','토'];
+const DEF_LABELS = {main:'주담당',assist:'보조담당',inspect:'분기점검',consult:'컨설팅',system:'체계구축',lecture:'강의',training:'교육',night:'야간점검',leave:'연차',leave_am:'오전반차',leave_pm:'오후반차',etc:'기타'};
+const DEF_COLORS = {main:'#3b6ff5',assist:'#8b5cf6',inspect:'#ea6c1a',consult:'#0ea970',system:'#0ea970',lecture:'#ca8a04',training:'#0e7490',night:'#dc2626',leave:'#6b7494',leave_am:'#6b7494',leave_pm:'#6b7494',etc:'#0891b2'};
+const LEAVE = {leave:1, leave_am:1, leave_pm:1};
+
+let cfg = null, data = null, fetchedAt = null, lastErr = '';
+const now0 = new Date();
+let Y = now0.getFullYear(), M = now0.getMonth();       // M: 0~11
+let sel = null;          // 'YYYY-MM-DD'
+let view = 'day';        // 'day' | 'month'
+let loading = false, lastLoad = 0;
+
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,'0');
+const ds = (y,m,d) => `${y}-${pad(m+1)}-${pad(d)}`;
+const todayStr = () => { const t = new Date(); return ds(t.getFullYear(), t.getMonth(), t.getDate()); };
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function parseD(s){ const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); }
+function fmtT(d){ if(!d) return '-'; const t = new Date(d); if(isNaN(t)) return '-'; return `${t.getMonth()+1}/${t.getDate()} ${pad(t.getHours())}:${pad(t.getMinutes())}`; }
+function b64urlDec(s){
+  let b = String(s).replace(/-/g,'+').replace(/_/g,'/'); while(b.length % 4) b += '=';
+  const bin = atob(b); const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+function b64Dec(s){ return b64urlDec(String(s).replace(/\s/g,'').replace(/\+/g,'-').replace(/\//g,'_')); }
+function lsGet(k){ try{ return JSON.parse(localStorage.getItem(k) || 'null'); }catch(e){ return null; } }
+function lsSet(k,v){ try{ if(v==null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+/* ── 연결 정보: QR 주소(#c=…) 또는 붙여넣기 ── */
+function parseCode(text){
+  const m = String(text||'').match(/[#?&]?c=([A-Za-z0-9_\-]+)/);
+  const code = m ? m[1] : String(text||'').trim();
+  const o = JSON.parse(b64urlDec(code));
+  if(!o || !o.o || !o.r || !o.t) throw new Error('bad');
+  return {owner:o.o, repo:o.r, path:o.p||'schedule.json', token:o.t};
+}
+function readHashCfg(){
+  if(!location.hash || location.hash.indexOf('c=') < 0) return null;
+  try{ return parseCode(location.hash); }catch(e){ return null; }
+}
+
+/* ── 데이터 받기 ── */
+function fileUrl(){
+  const p = String(cfg.path||'schedule.json').split('/').map(encodeURIComponent).join('/');
+  return `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/${p}`;
+}
+async function fetchData(){
+  const h = {'Authorization':'Bearer ' + cfg.token, 'Accept':'application/vnd.github+json'};
+  const r = await fetch(fileUrl(), {headers:h, cache:'no-store'});
+  if(!r.ok){ const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+  const j = await r.json();
+  let text;
+  if(j.content) text = b64Dec(j.content);
+  else {
+    const r2 = await fetch(fileUrl(), {headers:{'Authorization':'Bearer ' + cfg.token, 'Accept':'application/vnd.github.raw+json'}, cache:'no-store'});
+    if(!r2.ok){ const e = new Error('HTTP ' + r2.status); e.status = r2.status; throw e; }
+    text = await r2.text();
+  }
+  const st = JSON.parse(text);
+  if(!st || !Array.isArray(st.events)) throw new Error('형식 오류');
+  return st;
+}
+async function load(manual){
+  if(!cfg || loading) return;
+  loading = true; lastLoad = Date.now();
+  setStatus('불러오는 중…');
+  try{
+    data = await fetchData();
+    fetchedAt = new Date().toISOString();
+    lastErr = '';
+    lsSet(CACHE_KEY, {data, fetchedAt, owner:cfg.owner, repo:cfg.repo});
+  }catch(e){
+    const s = e.status;
+    lastErr = s===401 ? '토큰이 만료되었거나 잘못되었습니다. PC에서 폰 연결 QR을 다시 만들어 주세요.'
+            : s===404 ? '일정 파일을 찾을 수 없습니다. (저장소 이름 또는 토큰 권한 확인)'
+            : s===403 ? '접근 권한이 없습니다. (토큰의 Contents 읽기 권한 확인)'
+            : s ? 'GitHub 오류 ' + s
+            : '인터넷 연결 없음';
+  }finally{
+    loading = false;
+    renderAll();
+    if(manual && !lastErr) flash();
+  }
+}
+function flash(){ const s = $('status'); s.style.transition='none'; s.style.opacity='.3'; requestAnimationFrame(()=>{ s.style.transition='opacity .4s'; s.style.opacity='1'; }); }
+function setStatus(t, warn){ const s = $('status'); s.textContent = t; s.className = 'status' + (warn?' warn':''); }
+
+/* ── 일정 조회 ── */
+function labels(){ return (data && data.labels) || DEF_LABELS; }
+function colors(){ return (data && data.colors) || DEF_COLORS; }
+function holName(d){
+  if(!data) return '';
+  if(data.holidays && data.holidays[d]) return data.holidays[d];
+  const c = (data.customHolidays||[]).find(h => h.date === d);
+  return c ? (c.name || '휴일') : '';
+}
+function evsOn(d){
+  if(!data) return [];
+  const list = data.events.filter(e => e.date === d || (e.dateEnd && e.dateEnd > e.date && e.date <= d && d <= e.dateEnd));
+  const ord = {leave_am:-1, leave_pm:1};
+  return list.map((e,i)=>({e,i})).sort((a,b)=>((ord[a.e.type]||0)-(ord[b.e.type]||0)) || (a.i-b.i)).map(x=>x.e);
+}
+
+function evHtml(e, d, q){
+  const col = colors()[e.type] || '#888';
+  const lab = labels()[e.type] || e.type;
+  let time = '';
+  if(e.time){
+    const cross = e.dateEnd && e.dateEnd > e.date && e.type === 'night';
+    time = e.timeEnd ? `${e.time}~${cross?'(익)':''}${e.timeEnd}` : e.time;
+  }
+  let span = '';
+  if(e.dateEnd && e.dateEnd > e.date){
+    const a = parseD(e.date), b = parseD(e.dateEnd);
+    span = `${a.getMonth()+1}/${a.getDate()}~${b.getMonth()+1}/${b.getDate()}`;
+  }
+  const name = q ? hl(e.name, q) : esc(e.name);
+  const meta = [e.place, e.note].filter(Boolean).map(esc).join(' · ');
+  const past = d < todayStr() ? ' past' : '';
+  return `<div class="ev${past}"><div class="bar2" style="background:${esc(col)}"></div><div class="b">
+    <div class="t1"><span class="chip" style="background:${esc(col)}">${esc(lab)}</span>${time?`<span>${esc(time)}</span>`:''}${span?`<span>기간 ${esc(span)}</span>`:''}</div>
+    <div class="nm">${name}</div>${meta?`<div class="mt">${meta}</div>`:''}</div></div>`;
+}
+function hl(text, q){
+  const t = String(text||''); const i = t.toLowerCase().indexOf(q.toLowerCase());
+  if(i < 0) return esc(t);
+  return esc(t.slice(0,i)) + '<mark>' + esc(t.slice(i, i+q.length)) + '</mark>' + esc(t.slice(i+q.length));
+}
+function dayHead(d){
+  const t = parseD(d); const h = holName(d);
+  const isToday = d === todayStr();
+  return `<div class="dayh${isToday?' today':''}">${t.getMonth()+1}월 ${t.getDate()}일 (${WD[t.getDay()]})${isToday?' · 오늘':''}${h?`<span class="h">${esc(h)}</span>`:''}</div>`;
+}
+
+/* ── 그리기 ── */
+function renderGrid(){
+  $('ym').textContent = `${Y}년 ${M+1}월`;
+  const g = $('grid'); let html = '';
+  const first = new Date(Y, M, 1).getDay();
+  const last = new Date(Y, M+1, 0).getDate();
+  const today = todayStr();
+  const col = colors();
+  for(let i=0;i<first;i++) html += '<div class="cell empty"></div>';
+  for(let d=1; d<=last; d++){
+    const key = ds(Y,M,d); const dow = (first + d - 1) % 7;
+    const evs = evsOn(key); const h = holName(key);
+    const leave = evs.find(e => LEAVE[e.type]);
+    const cls = ['cell', dow===0?'sun':'', dow===6?'sat':'', h?'hol':'', key===today?'today':'', key===sel?'sel':'', leave&&leave.type==='leave'?'leave':''].filter(Boolean).join(' ');
+    const shown = evs.filter(e => !LEAVE[e.type]);
+    let dots = shown.slice(0,6).map(e => `<span class="dot" style="background:${esc(col[e.type]||'#888')}"></span>`).join('');
+    if(shown.length > 6) dots += `<span class="more">+${shown.length-6}</span>`;
+    html += `<div class="${cls}" data-d="${key}"><span class="d">${d}</span>`
+      + (h ? `<div class="hn">${esc(h)}</div>` : '')
+      + (leave ? `<div class="lv">${esc(labels()[leave.type]||'휴가')}</div>` : '')
+      + (dots ? `<div class="dots">${dots}</div>` : '')
+      + `</div>`;
+  }
+  g.innerHTML = html;
+}
+function renderList(){
+  const L = $('list'); const q = $('q').value.trim();
+  if(q){
+    const hits = data.events.filter(e => String(e.name||'').toLowerCase().includes(q.toLowerCase()))
+      .slice().sort((a,b)=> a.date.localeCompare(b.date) || String(a.time||'').localeCompare(String(b.time||'')));
+    if(!hits.length){ L.innerHTML = `<div class="none">'${esc(q)}' 일정이 없습니다.</div>`; return; }
+    const today = todayStr();
+    const up = hits.filter(e => (e.dateEnd||e.date) >= today).length;
+    let html = `<div class="sech">검색 결과 ${hits.length}건 <small>예정 ${up}건</small></div>`;
+    let cur = '';
+    hits.forEach(e => { if(e.date !== cur){ if(cur) html += '</div>'; cur = e.date; html += `<div class="day" data-day="${e.date}">` + dayHead(e.date); } html += evHtml(e, e.dateEnd||e.date, q); });
+    L.innerHTML = html + '</div>';
+    const firstUp = hits.find(e => (e.dateEnd||e.date) >= today);
+    if(firstUp){ const el = L.querySelector(`[data-day="${firstUp.date}"]`); if(el) setTimeout(()=>el.scrollIntoView({block:'start'}), 30); }
+    return;
+  }
+  if(view === 'day'){
+    const d = sel || ds(Y,M,1);
+    const evs = evsOn(d);
+    L.innerHTML = `<div class="day">${dayHead(d)}${evs.length ? evs.map(e=>evHtml(e,d)).join('') : '<div class="none">일정 없음</div>'}</div>`;
+  } else {
+    const last = new Date(Y, M+1, 0).getDate(); let html = ''; let n = 0;
+    for(let d=1; d<=last; d++){
+      const key = ds(Y,M,d); const evs = evsOn(key);
+      if(!evs.length) continue;
+      n += evs.length;
+      html += `<div class="day" id="d-${key}">${dayHead(key)}${evs.map(e=>evHtml(e,key)).join('')}</div>`;
+    }
+    L.innerHTML = html || '<div class="none">이번 달 일정이 없습니다.</div>';
+    const t = todayStr();
+    if(t.slice(0,7) === ds(Y,M,1).slice(0,7)){
+      const keys = [...L.querySelectorAll('.day[id]')].map(x=>x.id.slice(2)).filter(k => k >= t);
+      if(keys.length){ const el = $('d-'+keys[0]); if(el) setTimeout(()=>{ const top = el.getBoundingClientRect().top + scrollY - document.querySelector('header').offsetHeight - 8; scrollTo({top, behavior:'smooth'}); }, 30); }
+    }
+  }
+}
+function renderStatus(){
+  if(!data){ setStatus(lastErr || '불러오는 중…', !!lastErr); return; }
+  const who = data.syncDevice ? `${data.syncDevice} · ` : '';
+  let t = `최종 저장 ${who}${fmtT(data.savedAt)}`;
+  if(lastErr) setStatus(`${t} · ⚠ ${lastErr} (마지막 수신 ${fmtT(fetchedAt)})`, true);
+  else setStatus(`${t} · 확인 ${fmtT(fetchedAt).split(' ')[1]}`);
+}
+function renderAll(){
+  if(!cfg){ showSetup(); return; }
+  $('setup').style.display = 'none';
+  $('foot').style.display = '';
+  $('searchBox').style.display = '';
+  if(!data){
+    $('app').style.display = 'none';
+    renderStatus();
+    return;
+  }
+  $('app').style.display = '';
+  const q = $('q').value.trim();
+  $('calWrap').style.display = q ? 'none' : '';
+  $('qClear').style.display = q ? '' : 'none';
+  if(!sel || sel.slice(0,7) !== ds(Y,M,1).slice(0,7)){
+    const t = todayStr();
+    sel = t.slice(0,7) === ds(Y,M,1).slice(0,7) ? t : ds(Y,M,1);
+  }
+  renderGrid(); renderList(); renderStatus();
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === view));
+}
+
+/* ── 연결 화면 ── */
+function showSetup(msg){
+  $('app').style.display = 'none'; $('foot').style.display = 'none'; $('searchBox').style.display = 'none';
+  $('ym').textContent = '업무일정 보기'; setStatus('');
+  const s = $('setup'); s.style.display = '';
+  s.innerHTML = `<div class="setup"><h2>폰 연결</h2>
+    <ol><li>PC 업무일정표에서 <b>☁ 동기화 → 📱 폰 연결 QR</b></li>
+    <li>아이폰 카메라로 QR을 비추고 링크 열기</li>
+    <li>열린 화면에서 공유 버튼 → <b>홈 화면에 추가</b></li></ol>
+    ${msg?`<div class="notice">${esc(msg)}</div>`:''}
+    <textarea id="codeIn" placeholder="QR을 쓸 수 없으면 PC에서 복사한 주소를 여기에 붙여넣기"></textarea>
+    <button class="tb" id="codeBtn">연결</button></div>`;
+  $('codeBtn').onclick = ()=>{
+    try{ cfg = parseCode($('codeIn').value); lsSet(CFG_KEY, cfg); data = null; load(true); renderAll(); }
+    catch(e){ showSetup('주소 형식이 올바르지 않습니다. PC에서 다시 복사해 주세요.'); }
+  };
+}
+
+/* ── 이벤트 ── */
+$('grid').addEventListener('click', e => {
+  const c = e.target.closest('.cell[data-d]'); if(!c) return;
+  sel = c.dataset.d; view = 'day'; renderAll();
+  const top = $('list').getBoundingClientRect().top + scrollY - document.querySelector('header').offsetHeight - 8;
+  if(top > scrollY + innerHeight*0.6) scrollTo({top, behavior:'smooth'});
+});
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; view = b.dataset.v; renderAll(); });
+$('prevBtn').onclick = ()=>{ if(--M < 0){ M = 11; Y--; } sel = null; $('q').value=''; renderAll(); scrollTo({top:0}); };
+$('nextBtn').onclick = ()=>{ if(++M > 11){ M = 0; Y++; } sel = null; $('q').value=''; renderAll(); scrollTo({top:0}); };
+$('todayBtn').onclick = ()=>{ const t = new Date(); Y = t.getFullYear(); M = t.getMonth(); sel = todayStr(); view='day'; $('q').value=''; renderAll(); scrollTo({top:0}); };
+$('refBtn').onclick = ()=> load(true);
+let qTimer = null;
+const onQ = ()=>{ clearTimeout(qTimer); qTimer = setTimeout(renderAll, 150); };
+$('q').addEventListener('input', onQ);
+$('q').addEventListener('compositionend', onQ);
+$('qClear').onclick = ()=>{ $('q').value=''; renderAll(); };
+$('logoutBtn').onclick = ()=>{
+  if(!confirm('이 폰의 연결 정보와 저장된 일정 사본을 지울까요?')) return;
+  lsSet(CFG_KEY, null); lsSet(CACHE_KEY, null); cfg = null; data = null;
+  history.replaceState(null, '', location.pathname);
+  renderAll();
+};
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible' && cfg && Date.now()-lastLoad > 10000) load(); });
+window.addEventListener('pageshow', e => { if(e.persisted && cfg) load(); });
+setInterval(()=>{ if(cfg && document.visibilityState === 'visible') load(); }, POLL_MS);
+
+/* ── 시작 ── */
+// QR 주소(#c=…)가 있으면 그 설정을 사용. 주소는 지우지 않음:
+// 아이폰 "홈 화면에 추가" 앱은 Safari와 저장공간이 분리될 수 있어, 주소에 연결 정보가 남아 있어야 홈 화면 앱도 바로 연결됨.
+const hc = readHashCfg();
+cfg = hc || lsGet(CFG_KEY);
+if(hc) lsSet(CFG_KEY, hc);
+if(cfg){
+  const c = lsGet(CACHE_KEY);
+  if(c && c.data && c.owner === cfg.owner && c.repo === cfg.repo){ data = c.data; fetchedAt = c.fetchedAt; }
+  renderAll();
+  load();
+} else {
+  showSetup();
+}
+})();
+</script>
+</body>
+</html>
