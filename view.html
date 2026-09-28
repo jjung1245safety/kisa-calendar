@@ -138,6 +138,31 @@ select.fi{appearance:none;-webkit-appearance:none;background-image:linear-gradie
 .sugg button small{margin-left:auto;color:var(--text3);font-size:12px;white-space:nowrap;}
 .hint{font-size:12px;color:var(--warn);margin:6px 2px 0;}
 .del{width:100%;margin-top:22px;height:46px;border:1px solid var(--border);background:var(--surface);color:var(--danger);border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;}
+.dbtn{width:100%;height:44px;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:0 12px;font-size:16px;
+  text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;white-space:nowrap;overflow:hidden;}
+.dbtn::after{content:"▾";color:var(--text3);font-size:12px;}
+.dbtn.on{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:-1px;}
+.dbtn.empty{color:var(--text3);}
+.dp{margin-top:8px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:6px 4px 8px;}
+.dp-hd{display:flex;align-items:center;justify-content:space-between;padding:2px 4px 4px;}
+.dp-hd b{font-size:16px;}
+.dp-hd button{border:none;background:var(--surface2);border-radius:9px;min-width:38px;height:34px;font-size:17px;font-weight:600;cursor:pointer;}
+.dp-g{display:grid;grid-template-columns:repeat(7,1fr);row-gap:2px;}
+.dpc{height:50px;border:none;background:none;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+  padding-top:5px;font-size:15px;font-weight:600;cursor:pointer;color:var(--text);min-width:0;}
+.dpc.sat{color:var(--sat);} .dpc.sun,.dpc.hol{color:var(--sun);}
+.dpc.leave{background:var(--leave-bg);}
+.dpc.today .n{box-shadow:inset 0 0 0 1.5px var(--today);border-radius:12px;}
+.dpc .n{display:inline-block;min-width:24px;height:24px;line-height:24px;}
+.dpc small{font-size:9px;font-weight:600;line-height:1.2;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 1px;}
+.dpc .dd{display:flex;gap:2px;margin-top:3px;}
+.dpc .dd i{width:5px;height:5px;border-radius:3px;display:block;}
+.dpc.picked{background:var(--accent);color:#fff;}
+.dpc.picked small{color:#fff;}
+.dpc.picked .dd i{background:#fff !important;}
+.dpc:disabled{opacity:.22;cursor:default;}
+.dp-ft{display:flex;justify-content:flex-end;padding:6px 4px 0;}
+.dp-ft button{border:none;background:none;color:var(--accent);font-size:14px;font-weight:700;cursor:pointer;padding:6px 8px;}
 .err{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:13.5px;margin-top:4px;white-space:pre-line;display:none;}
 
 /* 알림 */
@@ -209,9 +234,10 @@ select.fi{appearance:none;-webkit-appearance:none;background-image:linear-gradie
       <div><div class="fl">회차</div><select class="fi" id="fRound"><option value="">회차 없음</option><option>1회차</option><option>2회차</option><option>3회차</option><option>4회차</option><option>5회차</option></select></div>
     </div>
     <div class="row2">
-      <div><div class="fl" id="fDateLbl">날짜</div><input class="fi" id="fDate" type="date"></div>
-      <div id="fEndWrap" style="display:none;"><div class="fl" id="fEndLbl">종료 날짜</div><input class="fi" id="fEnd" type="date"></div>
+      <div><div class="fl" id="fDateLbl">날짜</div><button type="button" class="dbtn" id="fDateBtn"></button><input type="hidden" id="fDate"></div>
+      <div id="fEndWrap" style="display:none;"><div class="fl" id="fEndLbl">종료 날짜</div><button type="button" class="dbtn" id="fEndBtn"></button><input type="hidden" id="fEnd"></div>
     </div>
+    <div class="dp" id="dp" style="display:none;"></div>
     <div class="row2" id="fTimeRow">
       <div><div class="fl" id="fTimeLbl">시간 (선택)</div><select class="fi" id="fTime"></select></div>
       <div id="fTimeEndWrap" style="display:none;"><div class="fl">종료 시간</div><select class="fi" id="fTimeEnd"></select></div>
@@ -499,6 +525,71 @@ function timeOptions(el, selected){
   el.innerHTML = h; if(!selected) el.value = '';
 }
 let form = null;   // {mode:'add'|'edit', type, orig}
+
+/* ── 날짜 선택 달력 (일요일 시작 — 일정표와 동일, 아이폰 내장 선택기 대신 사용) ── */
+let dp = null;     // {target:'start'|'end', y, m}
+function dLabel(v){ if(!v) return ''; const t = parseD(v); return `${t.getFullYear()}. ${t.getMonth()+1}. ${t.getDate()}. (${WD[t.getDay()]})`; }
+function syncDateBtns(){
+  const s = $('fDate').value, e = $('fEnd').value;
+  $('fDateBtn').textContent = s ? dLabel(s) : '날짜 선택';
+  $('fDateBtn').classList.toggle('empty', !s);
+  $('fEndBtn').textContent = e ? dLabel(e) : '없음';
+  $('fEndBtn').classList.toggle('empty', !e);
+  $('fDateBtn').classList.toggle('on', !!(dp && dp.target === 'start'));
+  $('fEndBtn').classList.toggle('on', !!(dp && dp.target === 'end'));
+}
+function openDp(target){
+  if(dp && dp.target === target){ closeDp(); return; }
+  const cur = (target === 'end' ? $('fEnd').value : '') || $('fDate').value || todayStr();
+  const t = parseD(cur);
+  dp = {target, y:t.getFullYear(), m:t.getMonth()};
+  renderDp(); syncDateBtns();
+}
+function closeDp(){ dp = null; $('dp').style.display = 'none'; $('dp').innerHTML = ''; syncDateBtns(); }
+function dpAllowed(d){
+  if(!dp || dp.target !== 'end') return true;
+  const s = $('fDate').value;
+  if(s && d < s) return false;
+  if(form && form.type === 'training' && s && d.slice(0,7) !== s.slice(0,7)) return false;
+  return true;
+}
+function renderDp(){
+  if(!dp || !data) return;
+  const {y, m} = dp;
+  const first = new Date(y, m, 1).getDay(), last = new Date(y, m+1, 0).getDate();
+  const picked = dp.target === 'end' ? $('fEnd').value : $('fDate').value;
+  const today = todayStr(), col = colors();
+  const selfId = form && form.orig ? String(form.orig.id) : null;
+  let cells = '';
+  for(let i=0;i<first;i++) cells += '<span></span>';
+  for(let d=1; d<=last; d++){
+    const key = ds(y,m,d), dow = (first + d - 1) % 7, h = holName(key);
+    const evs = evsOn(key).filter(e => String(e.id) !== selfId);
+    const leave = evs.find(e => LEAVE[e.type]);
+    const others = evs.filter(e => !LEAVE[e.type]);
+    const cls = ['dpc', dow===0?'sun':'', dow===6?'sat':'', h?'hol':'', key===today?'today':'', key===picked?'picked':'', leave&&leave.type==='leave'?'leave':''].filter(Boolean).join(' ');
+    const sub = h ? `<small>${esc(h)}</small>` : leave ? `<small>${esc(labels()[leave.type]||'휴가')}</small>` : '';
+    const dots = others.length ? `<span class="dd">${others.slice(0,4).map(e=>`<i style="background:${esc(col[e.type]||'#888')}"></i>`).join('')}</span>` : '';
+    cells += `<button type="button" class="${cls}" data-pick="${key}"${dpAllowed(key)?'':' disabled'} aria-label="${m+1}월 ${d}일 ${WD[dow]}요일${h?' '+esc(h):''}${leave?' '+esc(labels()[leave.type]||''):''}${others.length?' 일정 '+others.length+'건':''}"><span class="n">${d}</span>${sub}${dots}</button>`;
+  }
+  const clear = dp.target === 'end' && form && form.type === 'night' ? '<div class="dp-ft"><button type="button" data-clear="1">종료 날짜 지우기</button></div>' : '';
+  $('dp').innerHTML = `<div class="dp-hd"><button type="button" data-nav="-1" aria-label="이전 달">‹</button><b>${y}년 ${m+1}월</b><button type="button" data-nav="1" aria-label="다음 달">›</button></div>
+    <div class="wk"><div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div></div>
+    <div class="dp-g">${cells}</div>${clear}`;
+  $('dp').style.display = '';
+}
+function pickDate(key){
+  if(!dp) return;
+  if(dp.target === 'start'){
+    $('fDate').value = key;
+    const e = $('fEnd').value;
+    if(form && form.type === 'training') $('fEnd').value = key;               // 교육: 종료일을 시작일로 맞춤 (PC와 동일)
+    else if(e && e < key) $('fEnd').value = '';                                // 종료일이 시작일보다 빠르면 비움
+  } else {
+    $('fEnd').value = key;
+  }
+  closeDp();
+}
 function openSheet(mode, ev, date){
   if(!canEdit()) return;
   form = {mode, type: ev ? ev.type : 'main', orig: ev ? JSON.parse(JSON.stringify(ev)) : null};
@@ -520,6 +611,7 @@ function openSheet(mode, ev, date){
   $('fDel').style.display = mode === 'edit' ? '' : 'none';
   renderTypes(); applyTypeLayout(true);
   $('fSugg').style.display = 'none';
+  closeDp();
   hideToast();
   $('scrim').classList.add('open'); $('sheet').classList.add('open'); document.body.classList.add('lock');
   $('shSave').disabled = false; $('shSave').textContent = '저장';
@@ -544,6 +636,8 @@ function applyTypeLayout(initial){
   $('fEndLbl').textContent = t === 'training' ? '종료 날짜 (같은 달)' : '종료 날짜 (익일 가능)';
   if(!hasEnd) $('fEnd').value = '';
   if(t === 'training' && !$('fEnd').value) $('fEnd').value = $('fDate').value;
+  if(!hasEnd && dp && dp.target === 'end') closeDp(); else if(dp) renderDp();
+  syncDateBtns();
   const hasTime = t !== 'training' && !LEAVE[t];
   $('fTimeRow').style.display = hasTime ? '' : 'none';
   const hasTimeEnd = (t === 'lecture' || t === 'system');
@@ -811,7 +905,15 @@ $('fTime').addEventListener('change', ()=>{
     $('fTimeEnd').value = `${pad((parseInt(v,10)+add)%24)}:00`;
   }
 });
-$('fDate').addEventListener('change', ()=>{ if(form && form.type === 'training') $('fEnd').value = $('fDate').value; });
+$('fDateBtn').onclick = ()=> openDp('start');
+$('fEndBtn').onclick = ()=> openDp('end');
+$('dp').addEventListener('click', e => {
+  const nav = e.target.closest('[data-nav]');
+  if(nav){ dp.m += Number(nav.dataset.nav); if(dp.m < 0){ dp.m = 11; dp.y--; } if(dp.m > 11){ dp.m = 0; dp.y++; } renderDp(); return; }
+  if(e.target.closest('[data-clear]')){ $('fEnd').value = ''; closeDp(); return; }
+  const c = e.target.closest('[data-pick]');
+  if(c && !c.disabled) pickDate(c.dataset.pick);
+});
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible' && cfg && Date.now()-lastLoad > 10000) load(); });
 window.addEventListener('pageshow', e => { if(e.persisted && cfg) load(); });
 setInterval(()=>{ if(cfg && document.visibilityState === 'visible' && !$('sheet').classList.contains('open')) load(); }, POLL_MS);
