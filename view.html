@@ -303,7 +303,7 @@ function parseCode(text){
   const code = m ? m[1] : String(text||'').trim();
   const o = JSON.parse(b64urlDec(code));
   if(!o || !o.o || !o.r || !o.t) throw new Error('bad');
-  return {owner:o.o, repo:o.r, path:o.p||'schedule.json', token:o.t, w:o.w?1:0, ts:o.ts||0};
+  return {owner:o.o, repo:o.r, path:o.p||'schedule.json', token:o.t, w:o.w?1:0, ts:o.ts||0, exp:o.x||''};
 }
 function readHashCfg(){
   if(!location.hash || location.hash.indexOf('c=') < 0) return null;
@@ -465,9 +465,16 @@ function renderList(){
 function renderStatus(){
   if(!data){ setStatus(lastErr || '불러오는 중…', !!lastErr); return; }
   const who = data.syncDevice ? `${data.syncDevice} · ` : '';
-  const t = `최종 저장 ${who}${fmtT(data.savedAt)}`;
-  if(lastErr) setStatus(`${t} · ⚠ ${lastErr} (마지막 수신 ${fmtT(fetchedAt)})`, true);
-  else setStatus(`${t} · 확인 ${fmtT(fetchedAt).split(' ')[1]}`);
+  const hy = data.holidays && !Object.keys(data.holidays).some(k => k.slice(0,4) === String(Y)) ? ` · ⚠ ${Y}년 공휴일 미등록` : '';
+  let ex = '';
+  if(cfg && cfg.exp){
+    const t0 = new Date(); t0.setHours(0,0,0,0);
+    const n = Math.round((parseD(cfg.exp) - t0) / 86400000);
+    if(n <= 30) ex = n < 0 ? ' · ⚠ 폰 토큰 만료됨 — PC에서 QR 다시 만들기' : ` · ⚠ 폰 토큰 만료 D-${n}`;
+  }
+  const t = `최종 저장 ${who}${fmtT(data.savedAt)}${hy}`;
+  if(lastErr) setStatus(`${t} · ⚠ ${lastErr} (마지막 수신 ${fmtT(fetchedAt)})${ex}`, true);
+  else setStatus(`${t} · 확인 ${fmtT(fetchedAt).split(' ')[1]}${ex}`, !!(ex || hy));
 }
 function renderAll(){
   if(!cfg){ showSetup(); return; }
