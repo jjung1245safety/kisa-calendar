@@ -167,6 +167,31 @@ select.fi{appearance:none;-webkit-appearance:none;background-image:linear-gradie
 .dp-ft button{border:none;background:none;color:var(--accent);font-size:14px;font-weight:700;cursor:pointer;padding:6px 8px;}
 .err{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:13.5px;margin-top:4px;white-space:pre-line;display:none;}
 
+/* 안내문 */
+.msum{display:flex;gap:6px;flex-wrap:wrap;font-size:12.5px;color:var(--text2);padding:2px 2px 10px;}
+.msum b{font-weight:800;}
+.mc{display:flex;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 12px;margin-bottom:6px;cursor:pointer;}
+.mc:active{background:var(--surface2);}
+.mc .b{flex:1;min-width:0;}
+.mc .nm{font-size:15.5px;font-weight:700;word-break:keep-all;overflow-wrap:anywhere;}
+.mc .mt{font-size:13px;color:var(--text2);margin-top:2px;overflow-wrap:anywhere;}
+.mc .mt.no{color:var(--warn);}
+.st{font-size:11.5px;font-weight:800;border-radius:10px;padding:3px 8px;white-space:nowrap;flex-shrink:0;}
+.st.todo{background:var(--surface2);color:var(--text2);}
+.st.done{background:#e7f7ef;color:#0e7a4f;}
+.st.chg{background:var(--warn-bg);color:var(--warn);}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .st.done{background:#12352a;color:#5fd3a0;} }
+.mbox{width:100%;min-height:230px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);padding:10px 12px;font-size:15px;line-height:1.55;resize:vertical;}
+.sendb{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:50px;margin-top:10px;border:none;border-radius:12px;background:var(--accent);color:#fff;font-size:16px;font-weight:800;text-decoration:none;cursor:pointer;}
+.sendb.off{opacity:.4;pointer-events:none;}
+.subb{width:100%;height:44px;margin-top:8px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);font-size:15px;font-weight:700;cursor:pointer;}
+.subb.ok{border-color:#0e7a4f;color:#0e7a4f;}
+.ask{background:var(--sel);border-radius:12px;padding:12px;margin-bottom:10px;font-size:14.5px;font-weight:700;}
+.ask .r{display:flex;gap:8px;margin-top:10px;}
+.ask .r button{flex:1;height:42px;border-radius:10px;border:1px solid var(--border);background:var(--surface);font-size:15px;font-weight:700;cursor:pointer;color:var(--text);}
+.ask .r button.y{background:var(--accent);border-color:var(--accent);color:#fff;}
+.mnote{font-size:12px;color:var(--text3);margin:8px 2px 0;line-height:1.5;}
+
 /* 알림 */
 .toast{position:fixed;left:16px;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:60;max-width:528px;margin:0 auto;
   background:var(--toast);color:#fff;border-radius:12px;padding:12px 14px;font-size:14px;display:none;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,.3);}
@@ -204,6 +229,7 @@ select.fi{appearance:none;-webkit-appearance:none;background-image:linear-gradie
       <div class="tabs" id="tabs">
         <button data-v="day" class="on">선택한 날</button>
         <button data-v="month">이번 달 전체</button>
+        <button data-v="msg">안내문</button>
       </div>
     </div>
     <div class="sec" id="list"></div>
@@ -250,6 +276,14 @@ select.fi{appearance:none;-webkit-appearance:none;background-image:linear-gradie
     <textarea class="fi" id="fNote" placeholder="특이사항, 담당자 연락처 등"></textarea>
     <button class="del" id="fDel" style="display:none;">일정 삭제</button>
   </div>
+</div>
+<div class="sheet" id="msheet" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="sh-hd">
+    <button id="mClose">닫기</button>
+    <div class="t" id="mTitle">안내문</div>
+    <button id="mDummy" style="visibility:hidden;">닫기</button>
+  </div>
+  <div class="sh-bd" id="mBody"></div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastBtn" style="display:none;"></button></div>
 
@@ -362,6 +396,7 @@ async function load(manual){
   finally{
     loading = false;
     if(!$('sheet').classList.contains('open')) renderAll(); else renderStatus();
+    if(msh && !pendingSend) renderMsh();
   }
 }
 function setStatus(t, warn){ const s = $('status'); s.textContent = t; s.className = 'status' + (warn?' warn':''); }
@@ -445,6 +480,7 @@ function renderList(){
     if(firstUp){ const el = L.querySelector(`[data-day="${firstUp.date}"]`); if(el) setTimeout(()=>el.scrollIntoView({block:'start'}), 30); }
     return;
   }
+  if(view === 'msg'){ renderMsgList(L); return; }
   if(view === 'day'){
     const d = sel || ds(Y,M,1);
     const evs = evsOn(d);
@@ -491,6 +527,7 @@ function renderAll(){
     const t = todayStr();
     sel = t.slice(0,7) === ds(Y,M,1).slice(0,7) ? t : ds(Y,M,1);
   }
+  document.querySelector('.cal').style.display = (view === 'msg' && !q) ? 'none' : '';
   renderGrid(); renderList(); renderStatus();
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === view));
 }
@@ -764,6 +801,24 @@ function wsWarn(ev){
 /* 한 건 변경을 최신본에 적용 */
 function applyOp(st, op){
   st.events = st.events || [];
+  if(op.kind === 'msg'){
+    st.msgLog = st.msgLog || {};
+    if(op.val) st.msgLog[op.key] = op.val; else if(st.msgLog[op.key]) delete st.msgLog[op.key]; else return {ok:true, noop:true};
+    return {ok:true, ev:{date:op.key.split('|')[0], name:op.name}};
+  }
+  if(op.kind === 'contact'){
+    st.workplaces = st.workplaces || [];
+    let w = wsForBase(st, op.name);
+    if(!w){
+      const maxId = st.workplaces.reduce((m,x)=>Math.max(m, Number(x.id)||0), 0);
+      const id = Math.max(Number(st.wsId)||0, maxId + 1);
+      w = {id, name:op.name, type:'main', size:0, addr:'', memo:''};
+      st.workplaces.push(w); st.wsId = id + 1;
+    }
+    if(op.contact) w.contact = op.contact; else delete w.contact;
+    if(op.phone) w.phone = op.phone; else delete w.phone;
+    return {ok:true, ev:{date:'', name:w.name}};
+  }
   const idx = st.events.findIndex(e => String(e.id) === String(op.id));
   if(op.kind === 'add' || op.kind === 'restore'){
     if(op.kind === 'restore' && idx >= 0) return {ok:true, noop:true};
@@ -798,8 +853,8 @@ async function commit(op){
     if(res.noop){ setData(st); return res; }
     st.savedAt = new Date().toISOString();
     st.syncDevice = PHONE_DEVICE;
-    const label = {add:'추가', restore:'복구', edit:'수정', del:'삭제'}[op.kind];
-    const r = await putState(st, sha, `일정 ${label} · ${PHONE_DEVICE} · ${(res.ev&&res.ev.date)||''} ${(res.ev&&res.ev.name)||''}`.trim());
+    const label = {add:'일정 추가', restore:'일정 복구', edit:'일정 수정', del:'일정 삭제', msg:'안내문 발송 기록', contact:'연락처 저장'}[op.kind];
+    const r = await putState(st, sha, `${label} · ${PHONE_DEVICE} · ${(res.ev&&res.ev.date)||''} ${(res.ev&&res.ev.name)||''}`.trim());
     if(r.ok){ setData(st); return res; }
   }
   throw Object.assign(new Error('busy'), {user:'다른 기기 저장과 계속 겹쳤습니다. 잠시 후 다시 저장하세요.'});
@@ -853,6 +908,167 @@ async function onDelete(){
   await runCommit({kind:'del', id:o.id, orig:o}, `${md(o.date)} ${o.name} 삭제됨`, {kind:'restore', ev:o});
 }
 
+/* ══════ 안내문 문자 발송 ══════
+   주담당 사업장별 방문 안내문을 만들어 아이폰 메시지 앱으로 넘김 (받는 사람·본문 입력된 상태, 전송은 직접)
+   발송 기록(msgLog)은 서버에 저장되어 PC 안내문 화면에도 표시 */
+const ORG_NAME = '대한산업안전협회 서울지역본부';
+const GREET_NAME = {'대체공휴일':'연휴', '지방선거':'휴일', '설날연휴':'설 연휴', '추석연휴':'추석 연휴'};
+let msh = null;          // 열린 안내문 시트 상태
+let pendingSend = null;  // 메시지 앱으로 넘긴 뒤 돌아왔을 때 물어볼 내용
+function phoneList(v){ return String(v||'').split(/[,/;\n]+/).map(x=>x.replace(/\D/g,'')).filter(x=>x.length>=8); }
+function fmtPhone(n){ n=String(n||''); if(/^01\d{9}$/.test(n)) return n.replace(/(\d{3})(\d{4})(\d{4})/,'$1-$2-$3'); if(/^01\d{8}$/.test(n)) return n.replace(/(\d{3})(\d{3})(\d{4})/,'$1-$2-$3'); if(/^02\d{7,8}$/.test(n)) return n.replace(/^(02)(\d{3,4})(\d{4})$/,'$1-$2-$3'); return n.replace(/^(\d{3})(\d{3,4})(\d{4})$/,'$1-$2-$3'); }
+function wsForBase(st, base){
+  const c = ((st && st.workplaces) || []).filter(w => w.name === base || String(w.name).split('_')[0] === base);
+  return c.find(w => w.phone) || c.find(w => w.name === base) || c[0] || null;
+}
+function msgKey(y, m, base){ return `${y}-${pad(m+1)}|${base}`; }
+/* PC 안내문 생성과 같은 규칙: 해당 월 주담당만, 지역 구분('_') 통합, 1차 방문일 순(같은 날은 입력 순) */
+function msgItems(y, m){
+  const mon = ds(y, m, 1).slice(0,7);
+  const map = {}, first = {};
+  (data.events||[]).forEach((e, i)=>{
+    if(!e.date || !e.date.startsWith(mon) || e.type !== 'main') return;
+    const base = e.name.includes('_') ? e.name.split('_')[0] : e.name;
+    const region = e.name.includes('_') ? e.name.split('_').slice(1).join('_') : '';
+    if(!map[base]){ map[base] = []; first[base] = i; }
+    map[base].push({date:e.date, region});
+  });
+  return Object.keys(map).map(name => {
+    const v = map[name].sort((a,b)=>a.date.localeCompare(b.date));
+    return {name, dates:v.map(x=>x.date), regions:v.map(x=>x.region)};
+  }).sort((a,b)=> a.dates[0].localeCompare(b.dates[0]) || first[a.name] - first[b.name]);
+}
+/* 인사말: 보내는 날(오늘) 기준 — PC와 동일 */
+function greetingNow(){
+  const t0 = new Date();
+  const hn = d => { const n = holName(d); return GREET_NAME[n] || n; };
+  for(let k=0; k<=4; k++){
+    const t = new Date(t0); t.setDate(t0.getDate()+k);
+    const d = ds(t.getFullYear(), t.getMonth(), t.getDate());
+    if(holName(d)) return {kind:'holiday', name:hn(d), days:k};
+  }
+  if(t0.getDate() >= 25) return {kind:'monthend', msg:`${t0.getMonth()+1}월 마무리 잘하시고`};
+  const w = t0.getDay();
+  if(w === 1) return {kind:'weekday', msg:'이번 주도 안전한 한 주 보내시길 바랍니다.'};
+  if(w === 5) return {kind:'weekday', msg:'한 주 마무리 잘하시고 즐거운 주말 보내시길 바랍니다.'};
+  return {kind:'weekday', msg:'오늘도 안전한 하루 보내시길 바랍니다.'};
+}
+function buildMsg(it, y, m){
+  const g = greetingNow();
+  const closing = g.kind === 'holiday'
+    ? (g.days <= 1 ? `그럼 ${g.name} 잘 보내시고 방문 때 뵙겠습니다^^!` : `다가오는 ${g.name} 잘 보내시고 방문 때 뵙겠습니다^^!`)
+    : `${g.msg} 방문 때 뵙겠습니다^^!`;
+  const sender = [data.guideName, data.guideRank].filter(Boolean).join(' ') || '이정우 과장';
+  const lines = it.dates.map((d,i)=> `${i+1}차 : ${parseInt(d.slice(8),10)}일${it.regions[i] ? ' (' + it.regions[i] + ')' : ''}`).join('\n');
+  return `[${it.name}]\n\n격무에 고생이 많으십니다.\n${ORG_NAME} ${sender}입니다.\n\n${String(y).slice(2)}년 ${m+1}월\n${lines}\n\n방문드리겠습니다.\n\n${closing}`;
+}
+/* 상태: 미발송 / 발송 / 발송 후 일정 변경 */
+function msgState(y, m, it){
+  const r = ((data && data.msgLog) || {})[msgKey(y, m, it.name)];
+  if(!r) return {s:'todo'};
+  if(Array.isArray(r.d) && JSON.stringify(r.d) !== JSON.stringify(it.dates)) return {s:'chg', r};
+  return {s:'done', r};
+}
+function smsHref(num, body){ return `sms:${num}&body=${encodeURIComponent(body)}`; }   // iOS 형식 (본문 앞 '&')
+function renderMsgList(L){
+  const items = msgItems(Y, M);
+  if(!items.length){ L.innerHTML = `<div class="none">${M+1}월 주담당 방문 일정이 없습니다.</div>`; return; }
+  const cnt = {todo:0, done:0, chg:0}, nophone = items.filter(it => !phoneList((wsForBase(data, it.name)||{}).phone).length).length;
+  const rows = items.map((it, i)=>{
+    const st = msgState(Y, M, it); cnt[st.s]++;
+    const w = wsForBase(data, it.name); const ph = phoneList(w && w.phone);
+    const who = ph.length ? `📞 ${esc([w.contact, fmtPhone(ph[0]) + (ph.length>1 ? ` 외 ${ph.length-1}` : '')].filter(Boolean).join(' · '))}` : '번호 미등록';
+    const days = it.dates.map(d => `${parseInt(d.slice(8),10)}일(${WD[parseD(d).getDay()]})`).join(' · ');
+    const badge = st.s === 'done' ? `<span class="st done">✓ ${esc(fmtT(st.r.at).split(' ')[0])} 발송</span>`
+                : st.s === 'chg' ? '<span class="st chg">⚠ 일정 변경</span>' : '<span class="st todo">미발송</span>';
+    return `<div class="mc" data-mi="${i}"><div class="b"><div class="nm">${esc(it.name)}</div><div class="mt">${esc(days)}</div><div class="mt${ph.length?'':' no'}">${who}</div></div>${badge}</div>`;
+  }).join('');
+  L.innerHTML = `<div class="sech">${M+1}월 방문 안내문 <small>주담당 ${items.length}곳</small></div>`
+    + `<div class="msum"><span>미발송 <b>${cnt.todo}</b></span>·<span>발송 <b>${cnt.done}</b></span>${cnt.chg?`·<span style="color:var(--warn)">재발송 필요 <b>${cnt.chg}</b></span>`:''}${nophone?`·<span>번호 미등록 <b>${nophone}</b></span>`:''}</div>`
+    + rows;
+  L._items = items;
+}
+function openMsg(it){
+  hideToast();
+  msh = {y:Y, m:M, it, edited:false, fresh:false};
+  $('mTitle').textContent = it.name;
+  $('scrim').classList.add('open'); $('msheet').classList.add('open'); document.body.classList.add('lock');
+  renderMsh();
+  // 보내기 전에 서버 최신 일정으로 다시 확인 (다른 기기에서 방문일을 바꿨을 수 있음)
+  refreshForMsg();
+}
+async function refreshForMsg(){
+  const cur = msh;
+  try{ const {st} = await fetchLatest(); setData(st); if(msh === cur){ msh.fresh = true; msh.err = ''; } }
+  catch(e){ if(msh === cur){ msh.fresh = true; msh.err = errText(e); } }
+  if(msh !== cur) return;
+  const it = msgItems(msh.y, msh.m).find(x => x.name === msh.it.name);
+  if(!it){ msh.gone = true; }
+  else { if(JSON.stringify(it.dates) !== JSON.stringify(msh.it.dates) || JSON.stringify(it.regions) !== JSON.stringify(msh.it.regions)) msh.edited = false; msh.it = it; }
+  renderMsh(); renderAll();
+}
+function closeMsg(){
+  $('msheet').classList.remove('open');
+  if(!$('sheet').classList.contains('open')){ $('scrim').classList.remove('open'); document.body.classList.remove('lock'); }
+  msh = null; pendingSend = null;
+}
+function renderMsh(){
+  if(!msh) return;
+  const B = $('mBody'); const it = msh.it;
+  const keepBody = msh.edited && $('mText') ? $('mText').value : null;
+  const keepC = msh.cdirty && $('mContact') ? {c:$('mContact').value, p:$('mPhone').value} : null;
+  const w = wsForBase(data, it.name); const ph = phoneList(w && w.phone);
+  const st = msgState(msh.y, msh.m, it);
+  const body = keepBody != null ? keepBody : buildMsg(it, msh.y, msh.m);
+  let html = '';
+  if(msh.gone){ B.innerHTML = '<div class="notice">이 사업장의 이번 달 주담당 일정이 다른 기기에서 삭제·변경되었습니다. 닫고 목록을 다시 확인하세요.</div>'; return; }
+  if(pendingSend && pendingSend.ready && canEdit()){
+    html += `<div class="ask">문자를 보냈나요?<div class="r"><button class="y" id="mYes">보냄 · 기록</button><button id="mNo">안 보냄</button></div></div>`;
+  }
+  if(!msh.fresh) html += '<div class="mnote">최신 일정 확인 중…</div>';
+  else if(msh.err) html += `<div class="notice">⚠ ${esc(msh.err)} — 마지막으로 받은 일정 기준입니다. 방문일을 꼭 확인하고 보내세요.</div>`;
+  if(st.s === 'done') html += `<div class="mnote">✓ ${esc(fmtT(st.r.at))} ${esc(st.r.dev||'')}에서 ${esc(fmtPhone(st.r.to||''))}로 발송 기록됨</div>`;
+  if(st.s === 'chg') html += `<div class="notice">발송 뒤 방문일이 바뀌었습니다. (보낸 날짜: ${esc(st.r.d.map(d=>parseInt(d.slice(8),10)+'일').join(', '))}) 바뀐 안내문을 다시 보내세요.</div>`;
+  html += `<div class="fl">받는 사람</div>
+    <input class="fi" id="mContact" type="text" placeholder="담당자 (예: 김민수 대리)" value="${esc((w&&w.contact)||'')}" ${canEdit()?'':'disabled'}>
+    <input class="fi" id="mPhone" type="tel" inputmode="tel" style="margin-top:6px;" placeholder="휴대폰 010-0000-0000 (2개 이상은 쉼표로 구분)" value="${esc(ph.map(fmtPhone).join(', '))}" ${canEdit()?'':'disabled'}>
+    <button class="subb" id="mSaveC" style="display:none;">연락처 저장 · PC에도 반영</button>
+    <div class="fl">안내문 (수정 가능)</div>
+    <textarea class="mbox" id="mText"></textarea>`;
+  const ready = msh.fresh;
+  if(ph.length) html += ph.map(n => `<a class="sendb${ready?'':' off'}" data-send="${esc(n)}" href="${esc(smsHref(n, body))}">💬 ${esc(fmtPhone(n))}에게 문자 보내기</a>`).join('');
+  else html += `<div class="notice">휴대폰 번호가 없습니다. 위에 번호를 입력하고 [연락처 저장]을 누르세요.</div>`;
+  html += `<button class="subb" id="mCopy">본문 복사</button>`;
+  if(canEdit()) html += st.s === 'todo' ? `<button class="subb" id="mMark">문자 없이 발송 완료로 기록</button>` : `<button class="subb" id="mUnmark">발송 기록 지우기</button>`;
+  html += `<div class="mnote">문자 보내기를 누르면 메시지 앱이 받는 사람·본문이 채워진 상태로 열립니다. 전송은 메시지 앱에서 직접 누르세요.${canEdit()?'':'<br>보기 전용 연결이라 발송 기록은 저장되지 않습니다.'}</div>`;
+  B.innerHTML = html;
+  $('mText').value = body;
+  if(keepC){ $('mContact').value = keepC.c; $('mPhone').value = keepC.p; $('mSaveC').style.display = ''; }
+}
+function msgRecord(to){
+  const it = msh.it;
+  return {kind:'msg', key:msgKey(msh.y, msh.m, it.name), name:it.name, val:{at:new Date().toISOString(), dev:PHONE_DEVICE, to:to||'', d:it.dates.slice()}};
+}
+async function msgCommit(op, okMsg){
+  if(saving) return false;
+  saving = true;
+  try{ await commit(op); if(okMsg) toast(okMsg); return true; }
+  catch(e){
+    if(e && e.status === 403){ cfg.w = 0; lsSet(CFG_KEY, cfg); alert('이 폰의 토큰은 읽기 전용이라 저장할 수 없습니다.'); return false; }
+    alert((e && e.user) || errText(e)); return false;
+  }
+  finally{ saving = false; renderAll(); renderMsh(); }
+}
+function copyText(t){
+  const done = ()=> toast('본문을 복사했습니다.');
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, ()=>fallbackCopy(t, done));
+  else fallbackCopy(t, done);
+}
+function fallbackCopy(t, done){
+  const ta = $('mText'); if(!ta) return; ta.focus(); ta.select(); ta.setSelectionRange(0, 99999);
+  try{ document.execCommand('copy'); done(); }catch(e){ toast('복사 실패 — 본문을 길게 눌러 복사하세요.'); }
+}
+
 /* ── 이벤트 ── */
 $('grid').addEventListener('click', e => {
   const c = e.target.closest('.cell[data-d]'); if(!c) return;
@@ -886,7 +1102,51 @@ $('logoutBtn').onclick = ()=>{
   renderAll();
 };
 $('shCancel').onclick = closeSheet;
-$('scrim').onclick = closeSheet;
+$('scrim').onclick = ()=>{ if($('msheet').classList.contains('open')) closeMsg(); else closeSheet(); };
+$('mClose').onclick = closeMsg;
+$('list').addEventListener('click', e => {
+  const c = e.target.closest('.mc[data-mi]'); if(!c) return;
+  const it = ($('list')._items || [])[Number(c.dataset.mi)]; if(it) openMsg(it);
+});
+$('mBody').addEventListener('input', e => {
+  if(!msh) return;
+  if(e.target.id === 'mText'){
+    msh.edited = true;
+    $('mBody').querySelectorAll('[data-send]').forEach(a => a.href = smsHref(a.dataset.send, e.target.value));
+  }
+  if(e.target.id === 'mContact' || e.target.id === 'mPhone'){ msh.cdirty = true; $('mSaveC').style.display = ''; }
+});
+$('mBody').addEventListener('click', async e => {
+  if(!msh) return;
+  const t = e.target;
+  const a = t.closest('[data-send]');
+  if(a){
+    if(a.classList.contains('off')){ e.preventDefault(); return; }
+    // 메시지 앱으로 넘어감 → 돌아오면 "보냈나요?" 확인
+    pendingSend = {to:a.dataset.send, name:msh.it.name, ready:false};
+    setTimeout(()=>{ if(pendingSend){ pendingSend.ready = true; renderMsh(); } }, 1500);
+    return;
+  }
+  if(t.id === 'mYes'){ const to = pendingSend && pendingSend.to; pendingSend = null; await msgCommit(msgRecord(to), `${msh.it.name} 발송 기록됨`); return; }
+  if(t.id === 'mNo'){ pendingSend = null; renderMsh(); return; }
+  if(t.id === 'mCopy'){ copyText($('mText').value); return; }
+  if(t.id === 'mMark'){ await msgCommit(msgRecord(''), `${msh.it.name} 발송 완료로 기록됨`); return; }
+  if(t.id === 'mUnmark'){
+    if(!confirm('이 사업장의 발송 기록을 지울까요?')) return;
+    await msgCommit({kind:'msg', key:msgKey(msh.y, msh.m, msh.it.name), name:msh.it.name, val:null}, '발송 기록을 지웠습니다.'); return;
+  }
+  if(t.id === 'mSaveC'){
+    const nums = phoneList($('mPhone').value);
+    const bad = nums.filter(n => !/^01[016789]\d{7,8}$/.test(n));
+    if(!nums.length && $('mPhone').value.trim()){ alert('번호 형식을 확인하세요. (예: 010-1234-5678)'); return; }
+    if(bad.length && !confirm(`휴대폰 번호 형식이 아닙니다: ${bad.map(fmtPhone).join(', ')}\n문자 발송이 안 될 수 있습니다. 그래도 저장할까요?`)) return;
+    const op = {kind:'contact', name:msh.it.name, contact:$('mContact').value.trim(), phone:nums.join(',')};
+    msh.cdirty = false;
+    const ok = await msgCommit(op, '연락처 저장됨 · PC에 자동 반영');
+    if(!ok && msh){ msh.cdirty = true; $('mContact').value = op.contact; $('mPhone').value = $('mPhone').value || nums.map(fmtPhone).join(', '); $('mSaveC').style.display = ''; }
+    return;
+  }
+});
 $('shSave').onclick = onSave;
 $('fDel').onclick = onDelete;
 $('fTypes').addEventListener('click', e => {
@@ -923,9 +1183,12 @@ $('dp').addEventListener('click', e => {
   const c = e.target.closest('[data-pick]');
   if(c && !c.disabled) pickDate(c.dataset.pick);
 });
-document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible' && cfg && Date.now()-lastLoad > 10000) load(); });
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && pendingSend && msh){ pendingSend.ready = true; renderMsh(); }
+  if(document.visibilityState === 'visible' && cfg && Date.now()-lastLoad > 10000) load();
+});
 window.addEventListener('pageshow', e => { if(e.persisted && cfg) load(); });
-setInterval(()=>{ if(cfg && document.visibilityState === 'visible' && !$('sheet').classList.contains('open')) load(); }, POLL_MS);
+setInterval(()=>{ if(cfg && document.visibilityState === 'visible' && !$('sheet').classList.contains('open') && !$('msheet').classList.contains('open')) load(); }, POLL_MS);
 
 /* ── 시작 ──
    QR 주소(#c=…)의 연결 정보를 사용하되, 이 폰에 더 최근에 저장된 연결 정보가 있으면 그것을 사용.
