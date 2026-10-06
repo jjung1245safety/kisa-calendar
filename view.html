@@ -396,7 +396,7 @@ async function load(manual){
   finally{
     loading = false;
     if(!$('sheet').classList.contains('open')) renderAll(); else renderStatus();
-    if(msh && !pendingSend) renderMsh();
+    if(msh){ refreshMshItem(); renderMsh(); }
   }
 }
 function setStatus(t, warn){ const s = $('status'); s.textContent = t; s.className = 'status' + (warn?' warn':''); }
@@ -811,7 +811,7 @@ function applyOp(st, op){
     let w = wsForBase(st, op.name);
     if(!w){
       const maxId = st.workplaces.reduce((m,x)=>Math.max(m, Number(x.id)||0), 0);
-      const id = Math.max(Number(st.wsId)||0, maxId + 1);
+      const id = Math.max(Number(st.wsId)||0, maxId + 1, Date.now());   // PC에서 동시에 추가한 사업장과 번호가 겹치지 않도록
       w = {id, name:op.name, type:'main', size:0, addr:'', memo:''};
       st.workplaces.push(w); st.wsId = id + 1;
     }
@@ -1002,10 +1002,21 @@ async function refreshForMsg(){
   try{ const {st} = await fetchLatest(); setData(st); if(msh === cur){ msh.fresh = true; msh.err = ''; } }
   catch(e){ if(msh === cur){ msh.fresh = true; msh.err = errText(e); } }
   if(msh !== cur) return;
-  const it = msgItems(msh.y, msh.m).find(x => x.name === msh.it.name);
-  if(!it){ msh.gone = true; }
-  else { if(JSON.stringify(it.dates) !== JSON.stringify(msh.it.dates) || JSON.stringify(it.regions) !== JSON.stringify(msh.it.regions)) msh.edited = false; msh.it = it; }
+  refreshMshItem();
   renderMsh(); renderAll();
+}
+/* 최신 데이터 기준으로 시트의 사업장·방문일 갱신 — 방문일이 바뀌면 수정한 본문도 새로 만듦 (옛 날짜 발송 방지) */
+function refreshMshItem(){
+  if(!msh || !data) return;
+  const it = msgItems(msh.y, msh.m).find(x => x.name === msh.it.name);
+  if(!it){ msh.gone = true; return; }
+  msh.gone = false;
+  if(JSON.stringify(it.dates) !== JSON.stringify(msh.it.dates) || JSON.stringify(it.regions) !== JSON.stringify(msh.it.regions)){
+    if(msh.edited) msh.notice = '다른 기기에서 방문일이 바뀌어 안내문을 새 날짜로 다시 만들었습니다.';
+    msh.edited = false;
+    if(pendingSend){ pendingSend = null; msh.notice = '문자 앱에 있는 동안 방문일이 바뀌었습니다. 보낸 문자가 옛 날짜라면 새 안내문을 다시 보내세요.'; }
+  }
+  msh.it = it;
 }
 function closeMsg(){
   $('msheet').classList.remove('open');
@@ -1025,6 +1036,7 @@ function renderMsh(){
   if(pendingSend && pendingSend.ready && canEdit()){
     html += `<div class="ask">문자를 보냈나요?<div class="r"><button class="y" id="mYes">보냄 · 기록</button><button id="mNo">안 보냄</button></div></div>`;
   }
+  if(msh.notice) html += `<div class="notice">${esc(msh.notice)}</div>`;
   if(!msh.fresh) html += '<div class="mnote">최신 일정 확인 중…</div>';
   else if(msh.err) html += `<div class="notice">⚠ ${esc(msh.err)} — 마지막으로 받은 일정 기준입니다. 방문일을 꼭 확인하고 보내세요.</div>`;
   if(st.s === 'done') html += `<div class="mnote">✓ ${esc(fmtT(st.r.at))} ${esc(st.r.dev||'')}에서 ${esc(fmtPhone(st.r.to||''))}로 발송 기록됨</div>`;
@@ -1050,7 +1062,7 @@ function msgRecord(to){
   return {kind:'msg', key:msgKey(msh.y, msh.m, it.name), name:it.name, val:{at:new Date().toISOString(), dev:PHONE_DEVICE, to:to||'', d:it.dates.slice()}};
 }
 async function msgCommit(op, okMsg){
-  if(saving) return false;
+  if(saving){ toast('저장 중입니다. 잠시 후 다시 누르세요.'); return false; }
   saving = true;
   try{ await commit(op); if(okMsg) toast(okMsg); return true; }
   catch(e){
@@ -1127,7 +1139,13 @@ $('mBody').addEventListener('click', async e => {
     setTimeout(()=>{ if(pendingSend){ pendingSend.ready = true; renderMsh(); } }, 1500);
     return;
   }
-  if(t.id === 'mYes'){ const to = pendingSend && pendingSend.to; pendingSend = null; await msgCommit(msgRecord(to), `${msh.it.name} 발송 기록됨`); return; }
+  if(t.id === 'mYes'){
+    if(saving){ toast('저장 중입니다. 잠시 후 다시 누르세요.'); return; }
+    const ps = pendingSend; pendingSend = null;
+    const ok = await msgCommit(msgRecord(ps && ps.to), `${msh.it.name} 발송 기록됨`);
+    if(!ok && msh){ pendingSend = ps; renderMsh(); }   // 실패 시 질문 다시 표시
+    return;
+  }
   if(t.id === 'mNo'){ pendingSend = null; renderMsh(); return; }
   if(t.id === 'mCopy'){ copyText($('mText').value); return; }
   if(t.id === 'mMark'){ await msgCommit(msgRecord(''), `${msh.it.name} 발송 완료로 기록됨`); return; }
@@ -1141,9 +1159,9 @@ $('mBody').addEventListener('click', async e => {
     if(!nums.length && $('mPhone').value.trim()){ alert('번호 형식을 확인하세요. (예: 010-1234-5678)'); return; }
     if(bad.length && !confirm(`휴대폰 번호 형식이 아닙니다: ${bad.map(fmtPhone).join(', ')}\n문자 발송이 안 될 수 있습니다. 그래도 저장할까요?`)) return;
     const op = {kind:'contact', name:msh.it.name, contact:$('mContact').value.trim(), phone:nums.join(',')};
-    msh.cdirty = false;
+    // 저장 중·실패 시에도 입력값 유지 (cdirty 유지), 성공해야 서버 값으로 표시
     const ok = await msgCommit(op, '연락처 저장됨 · PC에 자동 반영');
-    if(!ok && msh){ msh.cdirty = true; $('mContact').value = op.contact; $('mPhone').value = $('mPhone').value || nums.map(fmtPhone).join(', '); $('mSaveC').style.display = ''; }
+    if(ok && msh){ msh.cdirty = false; renderMsh(); }
     return;
   }
 });
