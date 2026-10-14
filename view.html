@@ -95,6 +95,9 @@ header{position:sticky;top:0;z-index:10;background:var(--bg);padding-top:env(saf
 .ev .nm{font-size:15.5px;font-weight:700;margin-top:3px;word-break:keep-all;overflow-wrap:anywhere;}
 .ev .mt{font-size:13px;color:var(--text2);margin-top:2px;overflow-wrap:anywhere;}
 .ev.past{opacity:.55;}
+.ev.tap{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
+.ev.lift{position:relative;z-index:30;box-shadow:0 10px 28px rgba(0,0,0,.28);transition:box-shadow .15s;background:var(--surface);opacity:1;}
+body.dragging{-webkit-user-select:none;user-select:none;}
 .none{color:var(--text3);font-size:14px;text-align:center;padding:18px 0;}
 .tabs{display:flex;background:var(--surface2);border-radius:10px;padding:3px;}
 /* 탭 메뉴: 스크롤해도 상단 바로 아래에 고정 */
@@ -412,7 +415,7 @@ function setData(st){
   lsSet(CACHE_KEY, {data, fetchedAt, owner:cfg.owner, repo:cfg.repo});
 }
 async function load(manual){
-  if(!cfg || loading || saving) return;
+  if(!cfg || loading || saving || drag) return;
   loading = true; lastLoad = Date.now();
   setStatus('불러오는 중…');
   const t0 = Date.now();
@@ -509,13 +512,13 @@ function renderList(){
   if(view === 'day'){
     const d = sel || ds(Y,M,1);
     const evs = evsOn(d);
-    L.innerHTML = `<div class="day">${dayHead(d, true)}${evs.length ? evs.map(e=>evHtml(e,d)).join('') : '<div class="none">일정 없음</div>'}</div>`;
+    L.innerHTML = `<div class="day" data-date="${d}">${dayHead(d, true)}${evs.length ? evs.map(e=>evHtml(e,d)).join('') : '<div class="none">일정 없음</div>'}</div>`;
   } else {
     const last = new Date(Y, M+1, 0).getDate(); let html = '';
     for(let d=1; d<=last; d++){
       const key = ds(Y,M,d); const evs = evsOn(key);
       if(!evs.length) continue;
-      html += `<div class="day" id="d-${key}">${dayHead(key, false)}${evs.map(e=>evHtml(e,key)).join('')}</div>`;
+      html += `<div class="day" id="d-${key}" data-date="${key}">${dayHead(key, false)}${evs.map(e=>evHtml(e,key)).join('')}</div>`;
     }
     L.innerHTML = html || '<div class="none">이번 달 일정이 없습니다.</div>';
     const t = todayStr();
@@ -542,7 +545,7 @@ function renderStatus(){
 function renderAll(){
   if(!cfg){ showSetup(); return; }
   $('setup').style.display = 'none'; $('foot').style.display = ''; $('searchBox').style.display = '';
-  $('modeTxt').textContent = canEdit() ? '수정 가능 · 일정을 누르면 수정·삭제' : '보기 전용 · 수정은 PC 업무일정표에서';
+  $('modeTxt').textContent = canEdit() ? '수정 가능 · 누르면 수정·삭제 · 길게 눌러 끌면 순서 변경' : '보기 전용 · 수정은 PC 업무일정표에서';
   if(!data){ $('app').style.display = 'none'; renderStatus(); return; }
   $('app').style.display = '';
   const q = $('q').value.trim();
@@ -845,6 +848,18 @@ function applyOp(st, op){
     if(op.phone) w.phone = op.phone; else delete w.phone;
     return {ok:true, ev:{date:'', name:w.name}};
   }
+  if(op.kind === 'order'){
+    // 그날 일정의 순서만 바꿈: 해당 일정들이 배열에서 차지하던 자리에 새 순서대로 다시 배치 (다른 날 일정 위치는 그대로)
+    const cur = evsOn(op.date, st.events).map(e => String(e.id));
+    const want = op.ids.map(String);
+    if(cur.length !== want.length || cur.slice().sort().join('\n') !== want.slice().sort().join('\n'))
+      return {ok:false, msg:'다른 기기에서 이 날 일정이 바뀌었습니다.\n최신 내용을 확인한 뒤 다시 시도하세요.', changed:true};
+    if(cur.join('\n') === want.join('\n')) return {ok:true, noop:true};
+    const set = new Set(want), byId = new Map(st.events.map(e => [String(e.id), e]));
+    const pos = []; st.events.forEach((e, i) => { if(set.has(String(e.id))) pos.push(i); });
+    want.forEach((id, k) => { st.events[pos[k]] = byId.get(id); });
+    return {ok:true, ev:{date:op.date, name:'일정 순서'}};
+  }
   const idx = st.events.findIndex(e => String(e.id) === String(op.id));
   if(op.kind === 'add' || op.kind === 'restore'){
     if(op.kind === 'restore' && idx >= 0) return {ok:true, noop:true};
@@ -879,7 +894,7 @@ async function commit(op){
     if(res.noop){ setData(st); return res; }
     st.savedAt = new Date().toISOString();
     st.syncDevice = PHONE_DEVICE;
-    const label = {add:'일정 추가', restore:'일정 복구', edit:'일정 수정', del:'일정 삭제', msg:'안내문 발송 기록', contact:'연락처 저장'}[op.kind];
+    const label = {add:'일정 추가', restore:'일정 복구', edit:'일정 수정', del:'일정 삭제', msg:'안내문 발송 기록', contact:'연락처 저장', order:'순서 변경'}[op.kind];
     const r = await putState(st, sha, `${label} · ${PHONE_DEVICE} · ${(res.ev&&res.ev.date)||''} ${(res.ev&&res.ev.name)||''}`.trim());
     if(r.ok){ setData(st); return res; }
   }
@@ -1209,6 +1224,91 @@ function fallbackCopy(t, done){
   try{ document.execCommand('copy'); done(); }catch(e){ toast('복사 실패 — 본문을 길게 눌러 복사하세요.'); }
 }
 
+/* ══════ 같은 날 일정 순서 바꾸기 (길게 눌러 끌기) ══════
+   선택한 날 / 이번 달 전체 화면에서만. 휴가류(오전반차는 맨 위, 오후반차는 맨 아래로 고정)는 끌 수 없음.
+   놓으면 화면에 바로 반영하고 서버에 저장 → PC 달력의 같은 날 칸 순서도 같이 바뀜 */
+const HOLD_MS = 380, MOVE_TOL = 9;
+let drag = null, holdT = null, hold0 = null, dragNoClick = 0;
+function dragCards(dayEl){ return [...dayEl.querySelectorAll(':scope > .ev[data-id]')]; }
+function isLeaveCard(c){ const ev = data && data.events.find(x => String(x.id) === c.dataset.id); return !!(ev && LEAVE[ev.type]); }
+function cancelHold(){ clearTimeout(holdT); holdT = null; hold0 = null; }
+$('list').addEventListener('touchstart', e => {
+  if(drag || saving || !canEdit() || e.touches.length !== 1 || $('q').value.trim()) return;
+  const card = e.target.closest('.ev.tap[data-id]'); if(!card) return;
+  const dayEl = card.closest('.day[data-date]'); if(!dayEl || isLeaveCard(card)) return;
+  if(dragCards(dayEl).filter(c => !isLeaveCard(c)).length < 2) return;
+  const t = e.touches[0];
+  hold0 = {x:t.clientX, y:t.clientY, card, dayEl};
+  holdT = setTimeout(() => startDrag(hold0), HOLD_MS);
+}, {passive:true});
+function startDrag(h){
+  holdT = null; if(!h) return;
+  const r = h.card.getBoundingClientRect();
+  drag = {card:h.card, dayEl:h.dayEl, date:h.dayEl.dataset.date, grab:h.y - r.top, y:h.y, t:0,
+          orig:dragCards(h.dayEl).map(c => c.dataset.id), raf:0};
+  h.card.classList.add('lift'); document.body.classList.add('dragging');
+  try{ if(navigator.vibrate) navigator.vibrate(15); }catch(_){}
+  dragMove(h.y); dragLoop();
+}
+function dragMove(y){
+  const d = drag; d.y = y;
+  const c = d.card;
+  for(let guard = 0; guard < 50; guard++){
+    const layoutTop = c.getBoundingClientRect().top - d.t;
+    const want = y - d.grab;
+    const cards = dragCards(d.dayEl), i = cards.indexOf(c);
+    const prev = cards[i-1], next = cards[i+1];
+    if(prev && !isLeaveCard(prev)){ const pr = prev.getBoundingClientRect(); if(want < pr.top + pr.height/2){ d.dayEl.insertBefore(c, prev); continue; } }
+    if(next && !isLeaveCard(next)){ const nr = next.getBoundingClientRect(); if(want + c.offsetHeight > nr.top + nr.height/2){ d.dayEl.insertBefore(next, c); continue; } }
+    // 그날 카드 범위 밖으로는 못 나감
+    const mov = cards.filter(x => !isLeaveCard(x));
+    const lo = mov[0] === c ? layoutTop - 24 : -Infinity, hi = mov[mov.length-1] === c ? layoutTop + 24 : Infinity;
+    d.t = Math.max(lo, Math.min(hi, want)) - layoutTop;
+    c.style.transform = `translateY(${d.t}px)`;
+    break;
+  }
+}
+function dragLoop(){
+  if(!drag) return;
+  const top = stickyH() + 50, bot = innerHeight - 70;
+  let v = 0;
+  if(drag.y < top) v = -Math.min(14, (top - drag.y) / 4 + 2);
+  else if(drag.y > bot) v = Math.min(14, (drag.y - bot) / 4 + 2);
+  if(v){ const before = scrollY; scrollBy(0, v); if(scrollY !== before) dragMove(drag.y); }
+  drag.raf = requestAnimationFrame(dragLoop);
+}
+document.addEventListener('touchmove', e => {
+  if(drag){ e.preventDefault(); dragMove(e.touches[0].clientY); return; }
+  if(hold0){ const t = e.touches[0]; if(Math.abs(t.clientX - hold0.x) > MOVE_TOL || Math.abs(t.clientY - hold0.y) > MOVE_TOL) cancelHold(); }
+}, {passive:false});
+function endDrag(e){
+  if(!drag){ cancelHold(); return; }
+  if(e && e.cancelable) e.preventDefault();
+  const d = drag; drag = null; cancelAnimationFrame(d.raf);
+  dragNoClick = Date.now() + 500;
+  d.card.classList.remove('lift'); d.card.style.transform = ''; document.body.classList.remove('dragging');
+  const ids = dragCards(d.dayEl).map(c => c.dataset.id);
+  if(ids.join('\n') !== d.orig.join('\n')) saveOrder(d.date, ids, d.orig);
+}
+document.addEventListener('touchend', endDrag, {passive:false});
+document.addEventListener('touchcancel', endDrag, {passive:false});
+document.addEventListener('contextmenu', e => { if(drag || e.target.closest && e.target.closest('.ev.tap')) e.preventDefault(); });
+async function saveOrder(date, ids, orig){
+  applyOp(data, {kind:'order', date, ids});      // 화면 먼저 반영
+  renderAll();
+  saving = true;
+  try{
+    await commit({kind:'order', date, ids});
+    renderAll();
+    toast(`${md(date)} 순서 변경됨 · PC에 자동 반영`, '되돌리기', ()=>doUndo({kind:'order', date, ids:orig}), 6000);
+  }catch(e){
+    if(!(e && e.user)) applyOp(data, {kind:'order', date, ids:orig});   // 저장 실패 → 원래 순서로
+    renderAll();
+    if(isReadOnlyErr(e)){ cfg.w = 0; lsSet(CFG_KEY, cfg); renderAll(); alert('이 폰의 토큰은 읽기 전용입니다.\nPC에서 "이 폰에서 일정 추가·수정·삭제 허용"을 체크하고 폰 전용 쓰기 토큰으로 QR을 다시 만들어 주세요.'); }
+    else alert('순서 저장 실패: ' + ((e && e.user) || errText(e)));
+  }finally{ saving = false; }
+}
+
 /* ── 이벤트 ── */
 $('grid').addEventListener('click', e => {
   const c = e.target.closest('.cell[data-d]'); if(!c) return;
@@ -1217,6 +1317,7 @@ $('grid').addEventListener('click', e => {
   if(top > scrollY + innerHeight*0.6) scrollTo({top, behavior:'smooth'});
 });
 $('list').addEventListener('click', e => {
+  if(Date.now() < dragNoClick){ e.preventDefault(); e.stopPropagation(); return; }
   const a = e.target.closest('[data-add]');
   if(a){ openSheet('add', null, a.dataset.add); return; }
   const card = e.target.closest('.ev[data-id]');
