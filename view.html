@@ -1227,13 +1227,13 @@ function fallbackCopy(t, done){
 /* ══════ 같은 날 일정 순서 바꾸기 (길게 눌러 끌기) ══════
    선택한 날 / 이번 달 전체 화면에서만. 휴가류(오전반차는 맨 위, 오후반차는 맨 아래로 고정)는 끌 수 없음.
    놓으면 화면에 바로 반영하고 서버에 저장 → PC 달력의 같은 날 칸 순서도 같이 바뀜 */
-const HOLD_MS = 380, MOVE_TOL = 9;
+const HOLD_MS = 250, MOVE_TOL = 9;
 let drag = null, holdT = null, hold0 = null, dragNoClick = 0;
 function dragCards(dayEl){ return [...dayEl.querySelectorAll(':scope > .ev[data-id]')]; }
 function isLeaveCard(c){ const ev = data && data.events.find(x => String(x.id) === c.dataset.id); return !!(ev && LEAVE[ev.type]); }
-function cancelHold(){ clearTimeout(holdT); holdT = null; hold0 = null; }
+function cancelHold(){ const had = holdT; clearTimeout(holdT); holdT = null; hold0 = null; if(had && renderLater && !drag) safeRender(); }
 $('list').addEventListener('touchstart', e => {
-  if(drag || saving || !canEdit() || e.touches.length !== 1 || $('q').value.trim()) return;
+  if(drag || (saving && !orderBusy) || !canEdit() || e.touches.length !== 1 || $('q').value.trim()) return;
   const card = e.target.closest('.ev.tap[data-id]'); if(!card) return;
   const dayEl = card.closest('.day[data-date]'); if(!dayEl || isLeaveCard(card)) return;
   if(dragCards(dayEl).filter(c => !isLeaveCard(c)).length < 2) return;
@@ -1243,6 +1243,11 @@ $('list').addEventListener('touchstart', e => {
 }, {passive:true});
 function startDrag(h){
   holdT = null; if(!h) return;
+  if(!h.card.isConnected){   // 누르는 사이 화면이 다시 그려졌으면 같은 일정 카드를 다시 찾음
+    h.card = [...$('list').querySelectorAll('.ev[data-id]')].find(c => c.dataset.id === h.card.dataset.id && c.closest('.day[data-date="' + h.dayEl.dataset.date + '"]'));
+    if(!h.card){ hold0 = null; return; }
+    h.dayEl = h.card.closest('.day[data-date]');
+  }
   const r = h.card.getBoundingClientRect();
   drag = {card:h.card, dayEl:h.dayEl, date:h.dayEl.dataset.date, grab:h.y - r.top, y:h.y, t:0,
           orig:dragCards(h.dayEl).map(c => c.dataset.id), raf:0};
@@ -1289,24 +1294,51 @@ function endDrag(e){
   d.card.classList.remove('lift'); d.card.style.transform = ''; document.body.classList.remove('dragging');
   const ids = dragCards(d.dayEl).map(c => c.dataset.id);
   if(ids.join('\n') !== d.orig.join('\n')) saveOrder(d.date, ids, d.orig);
+  else if(renderLater) safeRender();
 }
 document.addEventListener('touchend', endDrag, {passive:false});
 document.addEventListener('touchcancel', endDrag, {passive:false});
 document.addEventListener('contextmenu', e => { if(drag || e.target.closest && e.target.closest('.ev.tap')) e.preventDefault(); });
-async function saveOrder(date, ids, orig){
+/* 저장은 뒤에서 순서대로 처리 — 저장 중에도 바로 다음 일정을 끌 수 있음 */
+const orderQ = new Map();      // 날짜 → 저장할 순서
+const orderOrig = new Map();   // 날짜 → 연속으로 바꾸기 전 원래 순서 (되돌리기용, 마지막 변경 후 6초간 유지)
+const orderOrigT = new Map();
+function keepOrig(date){ clearTimeout(orderOrigT.get(date)); orderOrigT.set(date, setTimeout(()=>{ orderOrig.delete(date); orderOrigT.delete(date); }, 6500)); }
+let orderBusy = false, renderLater = false;
+function safeRender(){ if(drag || holdT) renderLater = true; else { renderLater = false; renderAll(); } }
+function saveOrder(date, ids, orig, isUndo){
   applyOp(data, {kind:'order', date, ids});      // 화면 먼저 반영
-  renderAll();
-  saving = true;
+  if(isUndo) orderOrig.delete(date);
+  else { if(orig && !orderOrig.has(date)) orderOrig.set(date, orig); keepOrig(date); }
+  orderQ.set(date, {ids, isUndo:!!isUndo});
+  safeRender();
+  pumpOrder();
+}
+async function pumpOrder(){
+  if(orderBusy) return;
+  orderBusy = true; saving = true;
   try{
-    await commit({kind:'order', date, ids});
-    renderAll();
-    toast(`${md(date)} 순서 변경됨 · PC에 자동 반영`, '되돌리기', ()=>doUndo({kind:'order', date, ids:orig}), 6000);
-  }catch(e){
-    if(!(e && e.user)) applyOp(data, {kind:'order', date, ids:orig});   // 저장 실패 → 원래 순서로
-    renderAll();
-    if(isReadOnlyErr(e)){ cfg.w = 0; lsSet(CFG_KEY, cfg); renderAll(); alert('이 폰의 토큰은 읽기 전용입니다.\nPC에서 "이 폰에서 일정 추가·수정·삭제 허용"을 체크하고 폰 전용 쓰기 토큰으로 QR을 다시 만들어 주세요.'); }
-    else alert('순서 저장 실패: ' + ((e && e.user) || errText(e)));
-  }finally{ saving = false; }
+    while(orderQ.size){
+      const [date, job] = orderQ.entries().next().value; orderQ.delete(date);
+      try{
+        await commit({kind:'order', date, ids:job.ids});
+        for(const [d, v] of orderQ) applyOp(data, {kind:'order', date:d, ids:v.ids});   // 서버본 위에 아직 저장 안 된 변경 다시 얹기
+        if(!orderQ.has(date)){
+          const o = orderOrig.get(date);
+          if(job.isUndo) toast('되돌렸습니다.');
+          else if(o) toast(`${md(date)} 순서 변경됨 · PC에 자동 반영`, '되돌리기', ()=>saveOrder(date, o, null, true), 6000);
+        }
+      }catch(e){
+        const o = orderOrig.get(date); orderOrig.delete(date); orderQ.delete(date);
+        if(!(e && e.user) && o) applyOp(data, {kind:'order', date, ids:o});   // 저장 실패 → 원래 순서로
+        for(const [d, v] of orderQ) applyOp(data, {kind:'order', date:d, ids:v.ids});
+        safeRender();
+        if(isReadOnlyErr(e)){ cfg.w = 0; lsSet(CFG_KEY, cfg); orderQ.clear(); orderOrig.clear(); renderAll(); alert('이 폰의 토큰은 읽기 전용입니다.\nPC에서 "이 폰에서 일정 추가·수정·삭제 허용"을 체크하고 폰 전용 쓰기 토큰으로 QR을 다시 만들어 주세요.'); }
+        else alert('순서 저장 실패: ' + ((e && e.user) || errText(e)));
+      }
+      safeRender();
+    }
+  }finally{ orderBusy = false; saving = false; safeRender(); }
 }
 
 /* ── 이벤트 ── */
