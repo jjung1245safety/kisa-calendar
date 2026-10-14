@@ -251,7 +251,7 @@ select.fi{appearance:none;-webkit-appearance:none;background-image:linear-gradie
   </div>
   <footer id="foot" style="display:none;">
     <span id="modeTxt">보기 전용 · 수정은 PC 업무일정표에서</span><br>
-    <button id="logoutBtn">이 폰의 연결 해제</button>
+    <button id="wlinkBtn">위젯 연결 주소 복사</button> · <button id="logoutBtn">이 폰의 연결 해제</button>
   </footer>
 </main>
 
@@ -1241,6 +1241,18 @@ const onQ = ()=>{ clearTimeout(qTimer); qTimer = setTimeout(renderAll, 150); };
 $('q').addEventListener('input', onQ);
 $('q').addEventListener('compositionend', onQ);
 $('qClear').onclick = ()=>{ $('q').value=''; renderAll(); };
+/* Scriptable 위젯 연결용: 이 폰의 연결 주소(토큰 포함)를 복사 — PC 없이 위젯 설정 가능 */
+$('wlinkBtn').onclick = ()=>{
+  if(!cfg) return;
+  if(!confirm('위젯 연결 주소를 복사합니다.\n이 주소에는 일정 접근 토큰이 들어 있으니 다른 사람에게 보내지 마세요.\n\n복사 후 Scriptable의 업무일정_위젯을 실행해 붙여넣으세요.')) return;
+  const o = {o:cfg.owner, r:cfg.repo, p:cfg.path||'schedule.json', t:cfg.token, w:cfg.w?1:0, ts:Date.now()};   // 위젯을 눌러 열 때도 같은 권한
+  if(cfg.exp) o.x = cfg.exp;
+  const code = b64Enc(JSON.stringify(o)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const link = location.origin + location.pathname + '#c=' + code;
+  const done = ()=> toast('위젯 연결 주소를 복사했습니다. Scriptable에서 붙여넣으세요.', null, null, 5000);
+  const fail = ()=> prompt('아래 주소를 길게 눌러 복사하세요.', link);
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, fail); else fail();
+};
 $('logoutBtn').onclick = ()=>{
   const nq = mqLoad().length;
   if(!confirm('이 폰의 연결 정보와 저장된 일정 사본을 지울까요?' + (nq ? `\n\n⚠ 아직 서버에 저장되지 않은 발송 기록 ${nq}건도 지워집니다.` : ''))) return;
