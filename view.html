@@ -68,6 +68,15 @@ header{position:sticky;top:0;z-index:10;background:var(--bg);padding-top:env(saf
 .cell.sat .d{color:var(--sat);} .cell.sun .d,.cell.hol .d{color:var(--sun);}
 .cell.today .d{background:var(--today);color:#fff;}
 .cell.sel{background:var(--sel);}
+.cell.inwk{background:var(--surface2);}
+.wknav{display:flex;align-items:center;gap:8px;margin:2px 0 8px;}
+.wknav .wb{border:none;background:var(--surface2);color:var(--text);width:40px;height:40px;border-radius:10px;font-size:20px;cursor:pointer;flex-shrink:0;}
+.wknav .wt{flex:1;text-align:center;font-size:16px;font-weight:800;line-height:1.25;}
+.wknav .wt small{display:block;font-size:12px;font-weight:600;color:var(--accent);}
+.wkq{display:flex;gap:6px;margin-bottom:10px;}
+.wkq button{flex:1;border:1px solid var(--border);background:var(--surface);color:var(--text2);height:34px;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;}
+.wkq button.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.wkd .none{padding:6px 0 12px;font-size:13px;text-align:left;padding-left:4px;}
 .cell.leave{background:var(--leave-bg);}
 .cell .hn{font-size:9px;color:var(--sun);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;}
 .cell .lv{font-size:9.5px;color:var(--text2);font-weight:700;line-height:1.2;}
@@ -246,7 +255,8 @@ select.fi{appearance:none;-webkit-appearance:none;background-image:linear-gradie
     <div class="tabsbar" id="tabsBar">
       <div class="tabs" id="tabs">
         <button data-v="day" class="on">선택한 날</button>
-        <button data-v="month">이번 달 전체</button>
+        <button data-v="week">주간</button>
+        <button data-v="month">이번 달</button>
         <button data-v="msg">안내문</button>
       </div>
     </div>
@@ -327,6 +337,7 @@ let cfg = null, data = null, fetchedAt = null, lastErr = '';
 const now0 = new Date();
 let Y = now0.getFullYear(), M = now0.getMonth();
 let sel = null, view = 'day';
+let wk = null;   // 주간 보기: 그 주 월요일 (YYYY-MM-DD)
 let loading = false, lastLoad = 0, saving = false;
 
 const $ = id => document.getElementById(id);
@@ -482,7 +493,8 @@ function renderGrid(){
     const key = ds(Y,M,d), dow = (first + d - 1) % 7;
     const evs = evsOn(key), h = holName(key);
     const leave = evs.find(e => LEAVE[e.type]);
-    const cls = ['cell', dow===0?'sun':'', dow===6?'sat':'', h?'hol':'', key===today?'today':'', key===sel?'sel':'', leave&&leave.type==='leave'?'leave':''].filter(Boolean).join(' ');
+    const inWk = view === 'week' && wk && key >= wk && key <= addD(wk, 6);
+    const cls = ['cell', dow===0?'sun':'', dow===6?'sat':'', h?'hol':'', key===today?'today':'', (key===sel && view !== 'week')?'sel':'', inWk?'inwk':'', leave&&leave.type==='leave'?'leave':''].filter(Boolean).join(' ');
     const shown = evs.filter(e => !LEAVE[e.type]);
     let dots = shown.slice(0,6).map(e => `<span class="dot" style="background:${esc(col[e.type]||'#888')}"></span>`).join('');
     if(shown.length > 6) dots += `<span class="more">+${shown.length-6}</span>`;
@@ -492,6 +504,29 @@ function renderGrid(){
       + (dots ? `<div class="dots">${dots}</div>` : '') + `</div>`;
   }
   $('grid').innerHTML = html;
+}
+/* ── 주간 보기 (월~일) ── */
+function addD(d, n){ const t = parseD(d); t.setDate(t.getDate() + n); return ds(t.getFullYear(), t.getMonth(), t.getDate()); }
+function mondayOf(d){ const t = parseD(d); return addD(d, -((t.getDay() + 6) % 7)); }
+// 기본: 월~목은 이번 주, 금·토·일은 다음 주
+function defaultWeek(){ const t = todayStr(), dow = parseD(t).getDay(); return addD(mondayOf(t), (dow === 0 || dow >= 5) ? 7 : 0); }
+function weekRel(m){ const n = Math.round((parseD(m) - parseD(mondayOf(todayStr()))) / 604800000); return n === 0 ? '이번 주' : n === 1 ? '다음 주' : n === -1 ? '지난 주' : n > 0 ? `${n}주 후` : `${-n}주 전`; }
+function renderWeek(L){
+  if(!wk) wk = defaultWeek();
+  const days = [...Array(7)].map((_, i) => addD(wk, i));
+  const lab = d => { const t = parseD(d); return `${t.getMonth()+1}/${t.getDate()}(${WD[t.getDay()]})`; };
+  const rel = weekRel(wk), cur = mondayOf(todayStr());
+  let total = 0, html = '';
+  days.forEach((d, i) => {
+    const evs = evsOn(d);
+    if(i >= 5 && !evs.length && !holName(d)) return;   // 주말은 일정·휴일 있을 때만
+    total += evs.filter(e => !LEAVE[e.type]).length;
+    html += `<div class="day wkd" data-date="${d}">${dayHead(d, false)}${evs.length ? evs.map(e => evHtml(e, d)).join('') : '<div class="none">일정 없음</div>'}</div>`;
+  });
+  L.innerHTML = `<div class="wknav"><button class="wb" data-wk="-7" aria-label="이전 주">‹</button>
+      <div class="wt">${lab(days[0])} ~ ${lab(days[6])}<small>${rel} · 일정 ${total}건</small></div>
+      <button class="wb" data-wk="7" aria-label="다음 주">›</button></div>
+    <div class="wkq"><button data-wk="this"${wk === cur ? ' class="on"' : ''}>이번 주</button><button data-wk="next"${wk === addD(cur, 7) ? ' class="on"' : ''}>다음 주</button></div>` + html;
 }
 function renderList(){
   const L = $('list'); const q = $('q').value.trim();
@@ -509,6 +544,7 @@ function renderList(){
     return;
   }
   if(view === 'msg'){ renderMsgList(L); return; }
+  if(view === 'week'){ renderWeek(L); return; }
   if(view === 'day'){
     const d = sel || ds(Y,M,1);
     const evs = evsOn(d);
@@ -1350,6 +1386,12 @@ $('grid').addEventListener('click', e => {
 });
 $('list').addEventListener('click', e => {
   if(Date.now() < dragNoClick){ e.preventDefault(); e.stopPropagation(); return; }
+  const w = e.target.closest('[data-wk]');
+  if(w){
+    const v = w.dataset.wk, cur = mondayOf(todayStr());
+    wk = v === 'this' ? cur : v === 'next' ? addD(cur, 7) : addD(wk || defaultWeek(), Number(v));
+    weekMonth(); renderAll(); toListTop(); return;
+  }
   const a = e.target.closest('[data-add]');
   if(a){ openSheet('add', null, a.dataset.add); return; }
   const card = e.target.closest('.ev[data-id]');
@@ -1358,7 +1400,13 @@ $('list').addEventListener('click', e => {
     if(ev) openSheet('edit', ev);
   }
 });
-$('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; const same = view === b.dataset.v; view = b.dataset.v; renderAll(); if(!same) scrollTo({top:0}); });
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; const same = view === b.dataset.v; view = b.dataset.v;
+  if(view === 'week' && !same){ wk = defaultWeek(); weekMonth(); }
+  renderAll(); if(!same){ if(view === 'week') toListTop(); else scrollTo({top:0}); } });
+/* 주간 보기는 달력을 넘겨 목록부터 보이게 */
+function toListTop(){ scrollTo({top: Math.max(0, $('list').getBoundingClientRect().top + scrollY - stickyH() - 4)}); }
+/* 주간: 보는 주가 달력 달과 다르면 달력도 그 달로 (주 중간 날짜 기준) */
+function weekMonth(){ const mid = parseD(addD(wk, 3)); if(mid.getFullYear() !== Y || mid.getMonth() !== M){ Y = mid.getFullYear(); M = mid.getMonth(); } }
 /* 고정 탭 위치 = 상단 바 높이 (상태 줄 길이·화면 회전에 따라 바뀜) */
 function stickyH(){ const h = document.querySelector('header').offsetHeight; const t = $('tabsBar'); return h + (t && t.style.display !== 'none' ? t.offsetHeight : 0); }
 function syncHH(){ document.documentElement.style.setProperty('--hh', document.querySelector('header').offsetHeight + 'px'); }
