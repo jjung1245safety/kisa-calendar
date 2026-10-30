@@ -405,6 +405,7 @@ async function fetchLatest(){
   return {sha:j.sha, st};
 }
 async function putState(st, sha, message){
+  if(st && st.events) sortAllByTime(st.events);   // 어떤 저장이든 같은 날 시간 있는 일정은 시간순
   const r = await fetch(fileUrl(), {method:'PUT',
     headers:{'Authorization':'Bearer ' + cfg.token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'},
     body: JSON.stringify({message, content: b64Enc(JSON.stringify(st)), sha})});
@@ -454,6 +455,21 @@ function holName(d){
   if(data.holidays && data.holidays[d]) return data.holidays[d];
   const c = (data.customHolidays||[]).find(h => h.date === d);
   return c ? (c.name || '휴일') : '';
+}
+/* 같은 날 시간이 정해진 일정은 시간순으로 자동 정렬 (시간 없는 일정은 제자리 유지)
+   배열 안에서 그날 '시간 있는 일정'이 차지한 자리끼리만 맞바꿈 → 다른 날·시간 없는 일정 순서는 그대로 */
+function sortDayByTime(evs, date){
+  const idx=[]; evs.forEach((e,i)=>{ if(e && e.date===date && e.time) idx.push(i); });
+  if(idx.length<2) return false;
+  const sorted=idx.map((i,k)=>({e:evs[i],k})).sort((a,b)=> a.e.time<b.e.time?-1 : a.e.time>b.e.time?1 : a.k-b.k).map(x=>x.e);
+  let ch=false; idx.forEach((i,k)=>{ if(evs[i]!==sorted[k]){ evs[i]=sorted[k]; ch=true; } });
+  return ch;
+}
+function sortAllByTime(evs){
+  if(!Array.isArray(evs)) return false;
+  const dates=new Set(); evs.forEach(e=>{ if(e && e.time) dates.add(e.date); });
+  let ch=false; dates.forEach(d=>{ if(sortDayByTime(evs,d)) ch=true; });
+  return ch;
 }
 function evsOn(d, src){
   const list = (src || (data && data.events) || []).filter(e => e.date === d || (e.dateEnd && e.dateEnd > e.date && e.date <= d && d <= e.dateEnd));
@@ -937,6 +953,7 @@ async function commit(op){
     const res = applyOp(st, op);
     if(!res.ok){ setData(st); throw Object.assign(new Error('rule'), {user:res.msg, refresh:!!(res.changed||res.gone)}); }
     if(res.noop){ setData(st); return res; }
+    sortAllByTime(st.events);   // 같은 날 시간 있는 일정은 시간순 (PC 일정표와 같은 규칙)
     st.savedAt = new Date().toISOString();
     st.syncDevice = PHONE_DEVICE;
     const label = {add:'일정 추가', restore:'일정 복구', edit:'일정 수정', del:'일정 삭제', msg:'안내문 발송 기록', contact:'연락처 저장', order:'순서 변경'}[op.kind];
