@@ -184,6 +184,12 @@ select.fi{appearance:none;-webkit-appearance:none;background-image:linear-gradie
 /* 안내문 */
 .msum{display:flex;gap:6px;flex-wrap:wrap;font-size:12.5px;color:var(--text2);padding:2px 2px 10px;}
 .msum b{font-weight:800;}
+.mflt{display:flex;gap:6px;margin:0 0 8px;}
+.mflt button{flex:1;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:13.5px;font-weight:700;cursor:pointer;white-space:nowrap;padding:0 4px;}
+.mflt button b{font-weight:800;margin-left:3px;}
+.mflt button.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.mflt button.warn b{color:var(--warn);}
+.mflt button.on.warn b{color:#fff;}
 .mc{display:flex;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 12px;margin-bottom:6px;cursor:pointer;}
 .mc:active{background:var(--surface2);}
 .mc .b{flex:1;min-width:0;}
@@ -632,7 +638,10 @@ function hideToast(){ $('toast').classList.remove('show'); }
    다른 기기가 그 사이 저장해서 충돌하면 최신본을 다시 받아 자동 재시도 (폰은 서버 전체를 덮어쓰지 않음) */
 function timeOptions(el, selected){
   let h = '<option value="">-- 선택 안 함 --</option>';
-  for(let i=0;i<24;i++){ const v = `${pad(i)}:00`; h += `<option value="${v}"${v===selected?' selected':''}>${v}</option>`; }
+  const vals = [];
+  for(let i=0;i<24;i++){ vals.push(`${pad(i)}:00`, `${pad(i)}:30`); }   // 30분 단위
+  if(selected && /^\d{2}:\d{2}$/.test(selected) && !vals.includes(selected)){ vals.push(selected); vals.sort(); }   // 기존 값 보존
+  vals.forEach(v => { h += `<option value="${v}"${v===selected?' selected':''}>${v}</option>`; });
   el.innerHTML = h; if(!selected) el.value = '';
 }
 let form = null;   // {mode:'add'|'edit', type, orig}
@@ -1008,6 +1017,8 @@ function restorePending(){
   setPending(Object.assign({}, ps, {ready:true, hidden:false}));
   renderMsh();
 }
+let msgF = {ym:'', f:'all'};   // 안내문 목록 필터: all | todo(미발송+재발송 필요) | done
+function msgPass(st){ const f = msgF.f; return f === 'all' || (f === 'todo' ? st.s !== 'done' : st.s === 'done'); }
 let bulk = null;         // 여러 곳 한 번에 기록: {ym, sel:Set(사업장명)}
 function phoneList(v){ return String(v||'').split(/[,/;\n]+/).map(x=>x.replace(/\D/g,'')).filter(x=>x.length>=8); }
 function fmtPhone(n){ n=String(n||''); if(/^01\d{9}$/.test(n)) return n.replace(/(\d{3})(\d{4})(\d{4})/,'$1-$2-$3'); if(/^01\d{8}$/.test(n)) return n.replace(/(\d{3})(\d{3})(\d{4})/,'$1-$2-$3'); if(/^02\d{7,8}$/.test(n)) return n.replace(/^(02)(\d{3,4})(\d{4})$/,'$1-$2-$3'); return n.replace(/^(\d{3})(\d{3,4})(\d{4})$/,'$1-$2-$3'); }
@@ -1068,9 +1079,11 @@ function renderMsgList(L){
   const items = msgItems(Y, M);
   if(!items.length){ L.innerHTML = `<div class="none">${M+1}월 주담당 방문 일정이 없습니다.</div>`; return; }
   if(bulk && bulk.ym !== `${Y}-${M}`) bulk = null;
+  if(msgF.ym !== `${Y}-${M}`) msgF = {ym:`${Y}-${M}`, f:'all'};   // 달이 바뀌면 전체부터
   const cnt = {todo:0, done:0, chg:0}, nophone = items.filter(it => !phoneList((wsForBase(data, it.name)||{}).phone).length).length;
   const rows = items.map((it, i)=>{
     const st = msgState(Y, M, it); cnt[st.s]++;
+    if(!msgPass(st)) return '';
     const w = wsForBase(data, it.name); const ph = phoneList(w && w.phone);
     const who = ph.length ? `📞 ${esc([w.contact, fmtPhone(ph[0]) + (ph.length>1 ? ` 외 ${ph.length-1}` : '')].filter(Boolean).join(' · '))}` : '번호 미등록';
     const days = it.dates.map(d => `${parseInt(d.slice(8),10)}일(${WD[parseD(d).getDay()]})`).join(' · ');
@@ -1083,14 +1096,18 @@ function renderMsgList(L){
   let tool = '';
   if(canEdit()){
     tool = bulk
-      ? `<div class="mtool"><button id="bAll">미발송 모두 선택</button><button id="bCancel">취소</button></div>
+      ? `<div class="mtool"><button id="bAll">${msgF.f === 'done' ? '보이는 곳 모두 선택' : '미발송 모두 선택'}</button><button id="bCancel">취소</button></div>
          <div class="mtool"><button class="pri" id="bRec" ${bulk.sel.size?'':'disabled'}>선택 ${bulk.sel.size}곳 발송 완료로 기록</button></div>`
       : `<div class="mtool"><button id="bStart">여러 곳 한 번에 발송 완료 기록</button></div>`;
   }
   L.innerHTML = `<div class="sech">${M+1}월 방문 안내문 <small>주담당 ${items.length}곳</small></div>`
+    + `<div class="mflt">`
+      + `<button data-mf="all" class="${msgF.f==='all'?'on':''}">전체<b>${items.length}</b></button>`
+      + `<button data-mf="todo" class="${msgF.f==='todo'?'on':''}${cnt.chg?' warn':''}">미발송<b>${cnt.todo + cnt.chg}</b></button>`
+      + `<button data-mf="done" class="${msgF.f==='done'?'on':''}">발송<b>${cnt.done}</b></button></div>`
     + `<div class="msum"><span>미발송 <b>${cnt.todo}</b></span>·<span>발송 <b>${cnt.done}</b></span>${cnt.chg?`·<span style="color:var(--warn)">재발송 필요 <b>${cnt.chg}</b></span>`:''}${nophone?`·<span>번호 미등록 <b>${nophone}</b></span>`:''}</div>`
     + (nq ? `<div class="qbar">⏳ 발송 기록 ${nq}건 서버 저장 대기 중 (인터넷 연결 시 자동 저장)</div>` : '')
-    + tool + rows;
+    + tool + (rows || `<div class="none">${msgF.f === 'todo' ? '보낼 사업장이 없습니다. 모두 발송했습니다.' : '발송 기록이 없습니다.'}</div>`);
   L._items = items;
 }
 function openMsg(it, keepToast){
@@ -1445,12 +1462,14 @@ $('shCancel').onclick = closeSheet;
 $('scrim').onclick = ()=>{ if($('msheet').classList.contains('open')) closeMsg(); else closeSheet(); };
 $('mClose').onclick = closeMsg;
 $('list').addEventListener('click', e => {
+  const mf = e.target.closest('[data-mf]');
+  if(mf){ msgF = {ym:`${Y}-${M}`, f:mf.dataset.mf}; renderAll(); return; }
   const tb = e.target.closest('#bStart,#bAll,#bCancel,#bRec');
   if(tb){
     const items = $('list')._items || [];
     if(tb.id === 'bStart') bulk = {ym:`${Y}-${M}`, sel:new Set()};
     else if(tb.id === 'bCancel') bulk = null;
-    else if(tb.id === 'bAll') items.forEach(it => { if(msgState(Y, M, it).s !== 'done') bulk.sel.add(it.name); });
+    else if(tb.id === 'bAll') items.forEach(it => { const st = msgState(Y, M, it); if(msgPass(st) && (msgF.f === 'done' || st.s !== 'done')) bulk.sel.add(it.name); });
     else if(tb.id === 'bRec' && bulk && bulk.sel.size){
       const at = new Date().toISOString();
       const ops = items.filter(it => bulk.sel.has(it.name)).map(it => ({key:msgKey(Y, M, it.name), name:it.name, val:{at, dev:PHONE_DEVICE, to:'', d:it.dates.slice()}}));
@@ -1539,7 +1558,10 @@ $('fTime').addEventListener('change', ()=>{
   if(!v){ $('fTimeEnd').value = ''; return; }
   if(form.type === 'lecture' || form.type === 'system'){
     const add = form.type === 'system' ? 3 : 2;
-    $('fTimeEnd').value = `${pad((parseInt(v,10)+add)%24)}:00`;
+    const [hh, mm] = v.split(':');
+    const ev2 = `${pad((parseInt(hh,10)+add)%24)}:${mm||'00'}`;
+    $('fTimeEnd').value = ev2;
+    if($('fTimeEnd').value !== ev2) timeOptions($('fTimeEnd'), ev2);
   }
 });
 $('fDateBtn').onclick = ()=> openDp('start');
