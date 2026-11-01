@@ -461,7 +461,8 @@ function holName(d){
 function sortDayByTime(evs, date){
   const idx=[]; evs.forEach((e,i)=>{ if(e && e.date===date && e.time) idx.push(i); });
   if(idx.length<2) return false;
-  const sorted=idx.map((i,k)=>({e:evs[i],k})).sort((a,b)=> a.e.time<b.e.time?-1 : a.e.time>b.e.time?1 : a.k-b.k).map(x=>x.e);
+  const tk=t=>{ const m=/^(\d{1,2}):(\d{2})/.exec(String(t)); return m ? (+m[1])*60+(+m[2]) : 9999; };   // '9:00'도 09:00으로 비교
+  const sorted=idx.map((i,k)=>({e:evs[i],k,t:tk(evs[i].time)})).sort((a,b)=> (a.t-b.t) || (a.k-b.k)).map(x=>x.e);
   let ch=false; idx.forEach((i,k)=>{ if(evs[i]!==sorted[k]){ evs[i]=sorted[k]; ch=true; } });
   return ch;
 }
@@ -653,6 +654,7 @@ function hideToast(){ $('toast').classList.remove('show'); }
    저장 방식: 저장 직전에 서버 최신본을 받아 그 위에 "이 한 건의 변경"만 적용 → 버전(sha) 조건부 저장
    다른 기기가 그 사이 저장해서 충돌하면 최신본을 다시 받아 자동 재시도 (폰은 서버 전체를 덮어쓰지 않음) */
 function timeOptions(el, selected){
+  if(/^\d:\d{2}$/.test(selected||'')) selected = '0' + selected;   // '9:30' → '09:30'
   let h = '<option value="">-- 선택 안 함 --</option>';
   const vals = [];
   for(let i=0;i<24;i++){ vals.push(`${pad(i)}:00`, `${pad(i)}:30`); }   // 30분 단위
@@ -1378,6 +1380,10 @@ let orderBusy = false, renderLater = false;
 function safeRender(){ if(drag || holdT) renderLater = true; else { renderLater = false; renderAll(); } }
 function saveOrder(date, ids, orig, isUndo){
   applyOp(data, {kind:'order', date, ids});      // 화면 먼저 반영
+  if(sortDayByTime(data.events, date)){           // 시간 있는 일정은 시간순으로 되돌아감 (PC와 같은 규칙)
+    ids = evsOn(date).map(e => String(e.id));
+    if(!isUndo && orig && ids.join('\n') === orig.map(String).join('\n')){ toast('시간이 정해진 일정은 시간순으로 자동 정렬됩니다.'); safeRender(); return; }
+  }
   if(isUndo) orderOrig.delete(date);
   else { if(orig && !orderOrig.has(date)) orderOrig.set(date, orig); keepOrig(date); }
   orderQ.set(date, {ids, isUndo:!!isUndo});
