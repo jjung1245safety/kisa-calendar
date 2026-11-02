@@ -102,6 +102,21 @@ header{position:sticky;top:0;z-index:10;background:var(--bg);padding-top:env(saf
 .ev .chev{align-self:center;color:var(--text3);font-size:18px;}
 .chip{font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px;color:#fff;}
 .ev .nm{font-size:15.5px;font-weight:700;margin-top:3px;word-break:keep-all;overflow-wrap:anywhere;}
+.rp{margin-top:6px;height:30px;padding:0 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;}
+.rtabs{display:flex;gap:6px;margin:2px 0 12px;overflow-x:auto;}
+.rtabs button{flex:0 0 auto;height:34px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:13.5px;font-weight:700;cursor:pointer;}
+.rtabs button.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.rsec{font-size:13px;font-weight:800;color:var(--text2);margin:14px 2px 6px;}
+.rguide{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 12px;font-size:14px;line-height:1.6;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;}
+.rrow{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 12px;margin-bottom:8px;font-size:14px;line-height:1.55;}
+.rrow .rg{font-weight:800;font-size:15px;white-space:pre-wrap;}
+.rrow .rl{font-size:11.5px;font-weight:800;color:var(--text3);margin-top:7px;}
+.rrow .rv{white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;}
+.rrow .rk{display:inline-block;font-size:12.5px;font-weight:700;color:var(--text2);margin-top:6px;}
+.rdue{display:inline-block;margin-top:6px;font-size:12.5px;font-weight:800;padding:2px 8px;border-radius:8px;background:var(--surface2);color:var(--text2);}
+.rdue.over{background:#fde8e8;color:#b42318;}
+.rdue.soon{background:#fff4e0;color:#9a5b00;}
+.rmeta{font-size:12px;color:var(--text3);margin:14px 2px 4px;line-height:1.6;}
 .ev .mt{font-size:13px;color:var(--text2);margin-top:2px;overflow-wrap:anywhere;}
 .ev.past{opacity:.55;}
 .ev.tap{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
@@ -319,6 +334,14 @@ select.fi{appearance:none;-webkit-appearance:none;background-image:linear-gradie
   </div>
   <div class="sh-bd" id="mBody"></div>
 </div>
+<div class="sheet" id="rsheet" role="dialog" aria-modal="true" aria-labelledby="rTitle">
+  <div class="sh-hd">
+    <button id="rClose">닫기</button>
+    <div class="t" id="rTitle">지난 보고서</div>
+    <button id="rReload">새로고침</button>
+  </div>
+  <div class="sh-bd" id="rBody"></div>
+</div>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastBtn" style="display:none;"></button></div>
 
 <script>
@@ -443,6 +466,7 @@ async function load(manual){
     loading = false;
     if(!$('sheet').classList.contains('open')) renderAll(); else renderStatus();
     if(msh){ refreshMshItem(); renderMsh(); }
+    if(data) inspFetch(!!manual);
   }
 }
 function setStatus(t, warn){ const s = $('status'); s.textContent = t; s.className = 'status' + (warn?' warn':''); }
@@ -472,6 +496,115 @@ function sortAllByTime(evs){
   let ch=false; dates.forEach(d=>{ if(sortDayByTime(evs,d)) ch=true; });
   return ch;
 }
+
+/* ── 지난 보고서 (PC 통합허브가 올린 inspections_mobile.json — 사업장별 최근 3회) ── */
+const INSP_KEY = 'kisa_view_insp';
+const SITE_TYPES = {main:1, assist:1, inspect:1, consult:1, system:1, night:1};
+let insp = null, inspAt = 0, inspErr = '', inspLoading = false, rsh = null;
+(function(){ const c = lsGet(INSP_KEY); if(c && c.data && c.data.type === 'kisa-insp-mobile'){ insp = c.data; inspAt = c.at || 0; } })();
+function inspUrl(){
+  const dir = String(cfg.path||'schedule.json').split('/').slice(0,-1);
+  return `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/${dir.concat(['inspections_mobile.json']).map(encodeURIComponent).join('/')}`;
+}
+async function inspFetch(force){
+  if(!cfg || inspLoading) return;
+  if(!force && insp && Date.now() - inspAt < 10*60000) return;
+  inspLoading = true; inspErr = '';
+  try{
+    const hd = {'Authorization':'Bearer ' + cfg.token, 'Accept':'application/vnd.github+json'};
+    const r = await fetch(inspUrl(), {headers:hd, cache:'no-store'});
+    if(r.status === 404){ inspErr = 'none'; return; }
+    if(!r.ok) throw httpErr(r.status);
+    const j = await r.json();
+    let text;
+    if(j.content) text = b64Dec(j.content);
+    else { const r2 = await fetch(inspUrl(), {headers:Object.assign({}, hd, {'Accept':'application/vnd.github.raw+json'}), cache:'no-store'}); if(!r2.ok) throw httpErr(r2.status); text = await r2.text(); }
+    const d = JSON.parse(text);
+    if(!d || d.type !== 'kisa-insp-mobile' || !Array.isArray(d.sites)) throw new Error('형식 오류');
+    insp = d; inspAt = Date.now(); lsSet(INSP_KEY, {data:d, at:inspAt});
+  }catch(e){ inspErr = errText(e); }
+  finally{ inspLoading = false; if(!drag) renderAll(); if(rsh) renderRsh(); }
+}
+/* 사업장명 비교용: 법인 표기·공백·괄호·지역 구분('_')·체계구축 회차 제거 */
+function normSite(n){
+  return String(n||'').normalize('NFC').replace(/\s*\d+회차$/, '').split('_')[0]
+    .replace(/\(주\)|㈜|주식회사|\(유\)|유한회사|\(재\)|재단법인|\(사\)|사단법인|\(합\)|합자회사/g, '')
+    .replace(/[\s()\[\]·.,\-]/g, '').toLowerCase();
+}
+function siteFor(name){
+  if(!insp || !name) return null;
+  const w = wsForBase(data, String(name).split('_')[0]);
+  const lg = (w && w.ledger) || {};
+  const keys = [name, lg.officialName].concat(Array.isArray(lg.aliases) ? lg.aliases : []).map(normSite).filter(k => k.length >= 2);
+  const list = insp.sites.map(s => ({s, k:normSite(s.name)}));
+  for(const k of keys){
+    const hits = list.filter(x => x.k === k);
+    if(hits.length === 1) return hits[0].s;
+    if(hits.length > 1){   // 같은 사업장이 점검DB에 두 이름으로 있으면(예: '○○ 주식회사' / '주식회사 ○○') 보고서를 합쳐 최신 3회
+      const dkey = r => String(r.date).replace(/\D/g, '');
+      const seen = new Set(), reps = [];
+      hits.flatMap(x => x.s.reports || []).sort((a, b) => dkey(b).localeCompare(dkey(a))).forEach(r => { if(!seen.has(r.date)){ seen.add(r.date); reps.push(r); } });
+      const top = hits.slice().sort((a, b) => dkey((b.s.reports||[])[0]||{}).localeCompare(dkey((a.s.reports||[])[0]||{})))[0];
+      return {name: top.s.name, reports: reps.slice(0, (insp && insp.keep) || 3)};
+    }
+  }
+  let best = null;
+  for(const k of keys) for(const x of list){
+    if(x.k.length >= 3 && (k.startsWith(x.k) || x.k.startsWith(k)) && (!best || x.k.length > best.k.length)) best = x;
+  }
+  return best ? best.s : null;
+}
+function addMonths(d, n){ const t = new Date(d); const day = t.getDate(); t.setMonth(t.getMonth() + n); if(t.getDate() < day) t.setDate(0); return t; }
+function dueOf(dateStr, measures){
+  const m = String(measures||'').match(/권고\s*개선기한\s*:\s*(즉시|단기|중기|장기|지속관리)/); if(!m || m[1] === '지속관리') return null;
+  const p = String(dateStr).match(/(\d{4})\D(\d{1,2})\D(\d{1,2})/); if(!p) return null;
+  const base = new Date(+p[1], +p[2]-1, +p[3]);
+  const due = m[1] === '즉시' ? base : m[1] === '단기' ? new Date(base.getTime() + 7*864e5) : addMonths(base, m[1] === '중기' ? 1 : 3);
+  const td = parseD(todayStr()); const dd = Math.round((due - td) / 864e5);
+  return {label:`기한 ${due.getMonth()+1}/${due.getDate()}`, dd};
+}
+function openReport(name){
+  const site = siteFor(name);
+  rsh = {name, site, idx:0};
+  $('rTitle').textContent = site ? site.name : name;
+  $('scrim').classList.add('open'); $('rsheet').classList.add('open'); document.body.classList.add('lock');
+  renderRsh();
+  if(!insp || Date.now() - inspAt > 10*60000) inspFetch(true);
+}
+function closeReport(){
+  $('rsheet').classList.remove('open');
+  if(!$('sheet').classList.contains('open') && !$('msheet').classList.contains('open')){ $('scrim').classList.remove('open'); document.body.classList.remove('lock'); }
+  rsh = null;
+}
+function renderRsh(){
+  if(!rsh) return;
+  if(!rsh.site && insp) rsh.site = siteFor(rsh.name);
+  const B = $('rBody'), site = rsh.site;
+  if(!site){
+    B.innerHTML = `<div class="none">${inspLoading ? '불러오는 중…' : inspErr === 'none' ? '아직 휴대폰용 보고서가 없습니다.<br>PC 통합허브에서 점검DB를 한 번 열면 올라갑니다.' : inspErr ? '불러오지 못했습니다: ' + esc(inspErr) : esc(rsh.name) + '의 지난 보고서를 찾지 못했습니다.<br>점검DB의 사업장명과 일정의 사업장명이 다를 수 있습니다.'}</div>`;
+    return;
+  }
+  const reps = site.reports || []; if(rsh.idx >= reps.length) rsh.idx = 0;
+  const r = reps[rsh.idx] || {rows:[]};
+  let h = `<div class="rtabs">${reps.map((x, i) => `<button data-ri="${i}" class="${i===rsh.idx?'on':''}">${esc(x.date)}${i===0?' (직전)':''}</button>`).join('')}</div>`;
+  if(r.guide) h += `<div class="rsec">기술지도 사항</div><div class="rguide">${esc(r.guide)}</div>`;
+  h += `<div class="rsec">위험성평가 ${r.rows.length}행</div>`;
+  h += r.rows.map((x, i) => {
+    const due = dueOf(r.date, x.m);
+    const dueH = due ? `<span class="rdue${due.dd < 0 ? ' over' : due.dd <= 7 ? ' soon' : ''}">${esc(due.label)} · ${due.dd < 0 ? `${-due.dd}일 지남` : due.dd === 0 ? '오늘' : `D-${due.dd}`}</span>` : '';
+    return `<div class="rrow"><div class="rg">${i+1}. ${esc(x.g)}</div>`
+      + `<div class="rl">유해·위험요인</div><div class="rv">${esc(x.f)}</div>`
+      + `<div class="rl">현재 안전조치</div><div class="rv">${esc(x.a)}</div>`
+      + `<div class="rk">위험성 ${esc(x.r0)} → ${esc(x.r1)}</div>`
+      + `<div class="rl">위험성 감소대책</div><div class="rv">${esc(x.m)}</div>${dueH}</div>`;
+  }).join('') || '<div class="none">위험성평가 행이 없습니다.</div>';
+  h += `<div class="rmeta">PC 통합허브의 점검DB 기준 · ${esc((insp.src && insp.src.file) || '')}${insp.built ? ' · 올린 시각 ' + esc(fmtT(insp.built)) : ''}<br>보고서 원문(PDF)에서 줄이 바뀐 곳은 띄어쓰기가 하나 들어가 보일 수 있습니다.</div>`;
+  B.innerHTML = h;
+}
+$('rBody').addEventListener('click', e => { const b = e.target.closest('[data-ri]'); if(b && rsh){ rsh.idx = Number(b.dataset.ri); renderRsh(); $('rsheet').querySelector('.sh-bd').scrollTop = 0; } });
+$('rClose').onclick = closeReport;
+$('rReload').onclick = () => { if(rsh){ rsh.site = null; } inspFetch(true); renderRsh(); };
+
 function evsOn(d, src){
   const list = (src || (data && data.events) || []).filter(e => e.date === d || (e.dateEnd && e.dateEnd > e.date && e.date <= d && d <= e.dateEnd));
   const ord = {leave_am:-1, leave_pm:1};
@@ -497,7 +630,7 @@ function evHtml(e, d, q){
   const tap = canEdit() ? ' tap' : '';
   return `<div class="ev${past}${tap}" data-id="${esc(e.id)}"><div class="bar2" style="background:${esc(col)}"></div><div class="b">
     <div class="t1"><span class="chip" style="background:${esc(col)}">${esc(lab)}</span>${time?`<span>${esc(time)}</span>`:''}${span?`<span>기간 ${esc(span)}</span>`:''}</div>
-    <div class="nm">${name}</div>${meta?`<div class="mt">${meta}</div>`:''}</div>${canEdit()?'<div class="chev">›</div>':''}</div>`;
+    <div class="nm">${name}</div>${meta?`<div class="mt">${meta}</div>`:''}${SITE_TYPES[e.type] && siteFor(e.name) ? `<button class="rp" data-rp="${esc(e.name)}">📂 지난 보고서</button>` : ''}</div>${canEdit()?'<div class="chev">›</div>':''}</div>`;
 }
 function dayHead(d, withAdd){
   const t = parseD(d); const h = holName(d); const isToday = d === todayStr();
@@ -1434,6 +1567,8 @@ $('list').addEventListener('click', e => {
   }
   const a = e.target.closest('[data-add]');
   if(a){ openSheet('add', null, a.dataset.add); return; }
+  const rpb = e.target.closest('[data-rp]');
+  if(rpb){ openReport(rpb.dataset.rp); return; }
   const card = e.target.closest('.ev[data-id]');
   if(card && canEdit()){
     const ev = data.events.find(x => String(x.id) === card.dataset.id);
@@ -1482,7 +1617,7 @@ $('logoutBtn').onclick = ()=>{
   renderAll();
 };
 $('shCancel').onclick = closeSheet;
-$('scrim').onclick = ()=>{ if($('msheet').classList.contains('open')) closeMsg(); else closeSheet(); };
+$('scrim').onclick = ()=>{ if($('rsheet').classList.contains('open')) closeReport(); else if($('msheet').classList.contains('open')) closeMsg(); else closeSheet(); };
 $('mClose').onclick = closeMsg;
 $('list').addEventListener('click', e => {
   const mf = e.target.closest('[data-mf]');
