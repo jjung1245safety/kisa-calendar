@@ -523,7 +523,7 @@ async function inspFetch(force){
     if(!d || d.type !== 'kisa-insp-mobile' || !Array.isArray(d.sites)) throw new Error('형식 오류');
     insp = d; inspAt = Date.now(); lsSet(INSP_KEY, {data:d, at:inspAt});
   }catch(e){ inspErr = errText(e); }
-  finally{ inspLoading = false; if(!drag) renderAll(); if(rsh) renderRsh(); }
+  finally{ inspLoading = false; if(!$('sheet').classList.contains('open')) safeRender(); if(rsh) renderRsh(); }   // 일정 수정 창이 열려 있거나 끌어 옮기는 중에는 목록을 다시 그리지 않음
 }
 /* 사업장명 비교용: 법인 표기·공백·괄호·지역 구분('_')·체계구축 회차 제거 */
 function normSite(n){
